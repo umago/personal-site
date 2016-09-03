@@ -1,0 +1,10 @@
+{
+  "title": "Lucas A. Gomes' Personal Page",
+  "header": "~lucasagomes",
+  "footer": "(c) 2016, Lucas Alvares Gomes<br>The content of this site is licensed under the <a href='https://creativecommons.org/licenses/by-sa/4.0/'>CC BY-SA 4.0</a>, and the <a href='https://github.com/umago/personal-site'>code</a> is <a href='https://raw.githubusercontent.com/umago/personal-site/gh-pages/LICENSE'>MIT</a>.",
+  "links": [
+      ["home", "index.html"],
+      ["about", "about.html"],
+      ["github", "http://github.com/umago"]
+  ]
+}
