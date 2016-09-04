@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 
-        <link rel="stylesheet" type="text/css" href="{{ baseurl }}/style.css">
+        <link rel="stylesheet" type="text/css" href="/style.css">
         {% if title %}
             <title>{{ title }}</title>
         {% endif %}
@@ -16,11 +16,7 @@
 		<h1>{{ header }}</h1>
 		<ul>
 		    {% for name, href in __links__ %}
-                        {% if href.startswith('http') %}
-			    <li><a href="{{ href }}">{{ name }}</a></li>
-                        {% else %}
-			    <li><a href="{{ baseurl }}/{{ href }}">{{ name }}</a></li>
-                        {% endif %}
+		        <li><a href="{{ href }}">{{ name }}</a></li>
 		    {% endfor %}
 		</ul>
 	    </div>

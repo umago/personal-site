@@ -9,11 +9,7 @@ help:
 build:
 	virtualenv venv
 	venv/bin/pip install -r requirements.txt
-ifeq ("${BASEURL}", "")
 	venv/bin/python build.py
-else
-	venv/bin/python build.py --baseurl ${BASEURL}
-endif
 
 clean:
 	find . -name "*.html" -exec rm -rf {} \;

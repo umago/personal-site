@@ -21,7 +21,6 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
-import argparse
 import datetime
 import json
 import os
@@ -79,14 +78,7 @@ def build_html(template, template_args):
         f.write(template.render(**template_args, __posts__=posts))
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-b', '--baseurl', default='', help='')
-    return parser.parse_args()
-
-
 def main():
-    args = parse_args()
     with open('config.json', 'r') as f:
         conf = json.load(f)
 
@@ -97,7 +89,6 @@ def main():
         'title': conf.get('title'),
         'header': conf.get('header'),
         'footer': conf.get('footer'),
-        'baseurl': args.baseurl,
     }
     build_html(template, template_args)
 
