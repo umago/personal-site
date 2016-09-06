@@ -49,7 +49,7 @@ def _sanitize_posts_metadata(posts):
 
             p[key] = value
 
-    return sorted(posts, key=lambda k: k['date'])
+    return sorted(posts, key=lambda k: k['date'], reverse=True)
 
 
 def build_html(template, template_args):
