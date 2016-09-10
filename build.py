@@ -54,10 +54,11 @@ def _sanitize_posts_metadata(posts):
 
 def build_html(template, template_args):
     md_list = get_markdown_files()
-    md = markdown.Markdown(output_format='html5',
-                           extensions=['markdown.extensions.meta'])
     posts = []
     for src in md_list:
+        md = markdown.Markdown(output_format='html5',
+                               extensions=['markdown.extensions.meta',
+                                           'markdown.extensions.footnotes'])
         with open(src, 'r') as f:
             html = md.convert(f.read())
 
