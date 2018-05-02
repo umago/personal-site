@@ -58,7 +58,11 @@ def build_html(template, template_args):
     for src in md_list:
         md = markdown.Markdown(output_format='html5',
                                extensions=['markdown.extensions.meta',
-                                           'markdown.extensions.footnotes'])
+                                           'markdown.extensions.footnotes',
+                                           'markdown.extensions.fenced_code',
+                                           'markdown.extensions.tables',
+                                           'markdown.extensions.toc',
+                                           'markdown.extensions.abbr'])
         with open(src, 'r') as f:
             html = md.convert(f.read())
 

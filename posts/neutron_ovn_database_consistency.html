@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+        <link rel="stylesheet" type="text/css" href="/style.css">
+        
+            <title>Lucas A. Gomes' Personal Page</title>
+        
+    </head>
+
+    <body>
+	<div class="wrapper">
+	    <div class="header">
+		<h1>~lucasgom.es</h1>
+		<ul>
+		    
+		        <li><a href="/index.html">home</a></li>
+		    
+		        <li><a href="/about.html">about</a></li>
+		    
+		        <li><a href="http://github.com/umago">github</a></li>
+		    
+		</ul>
+	    </div>
+	    
+
+	    
+		<div class="content">
+		    <h1 id="neutron-ovn-database-consistency">Neutron &amp; <abbr title="Open Virtual Network">OVN</abbr> database consistency</h1>
+<p>In this post I will talk about a problem that affects many (if not all)
+drivers in <a href="https://docs.openstack.org/neutron/latest/">OpenStack Neutron</a> and how it was solved for the <abbr title="Open Virtual Network">OVN</abbr> driver
+(<abbr title="Also Known As">AKA</abbr> <a href="https://docs.openstack.org/networking-ovn/latest/">networking-ovn</a>).</p>
+<h2 id="problem-description">Problem description</h2>
+<p>In a common Neutron deployment model, multiple neutron-servers will
+handle the API requests concurrently. Requests which mutate the state
+of a resource (create, update and delete) will have their changes first
+committed to the Neutron database and then the loaded <abbr title="Software-Defined Networking">SDN</abbr> driver is
+invoked to translate that information to its specific data model. As
+the following diagram illustrates:</p>
+<p><img src=/posts/images/neutron_deployment_model_diagram.png width=70% class="center" title="Neutron Deployment Model"></p>
+<p>The model above can lead to two situations that could cause
+inconsistencies between the Neutron and the <abbr title="Software-Defined Networking">SDN</abbr> databases:</p>
+<h3 id="problem-1-same-resource-updates-race-condition">Problem 1: Same resource updates race condition</h3>
+<p>When two or more updates to the same resource is issued at the same time
+and handled by different neutron-servers, the order in which these updates
+are written to the Neutron database is correct, however, the methods
+invoked in the driver to update the <abbr title="Software-Defined Networking">SDN</abbr> database are not guaranteed to
+follow the same order as the Neutron database commits. That could lead
+to newer updates being overwritten by old ones on the <abbr title="Software-Defined Networking">SDN</abbr> side resulting
+in both databases becoming inconsistent with each other.</p>
+<p>The pseudo code for these updates looks something like this:</p>
+<pre><code>  In Neutron:
+
+    with neutron_db_transaction:
+         update_neutron_db()
+         driver.update_port_precommit()
+    driver.update_port_postcommit()
+
+  In the driver:
+
+    def update_port_postcommit:
+        port = neutron_db.get_port()
+        update_port_in_southbound_controller(port)
+</code></pre>
+
+<p>This problem has been reported at <a href="https://bugs.launchpad.net/networking-ovn/+bug/1605089">bug #1605089</a>.</p>
+<h3 id="problem-2-backend-failures">Problem 2: Backend failures</h3>
+<p>The second situation is when changes are already fully persisted in
+the Neutron database but an error occurs upon trying to update the
+<abbr title="Software-Defined Networking">SDN</abbr> database. Usually, what drivers do when that happens is to try to
+immediately rollback those changes in Neutron and then throw an error but,
+that rollback operation itself could also fail.</p>
+<p>On top of that, rollbacks are not very straight forward when it comes
+to updates or deletes. For example, in the case where a <abbr title="Virtual Machine">VM</abbr> is being
+teared down, part of the process includes deleting the ports associated
+with that <abbr title="Virtual Machine">VM</abbr>. If the port deletion fails on the <abbr title="Software-Defined Networking">SDN</abbr> side, re-creating
+that port in Neutron does not fix the problem. The decommission of a <abbr title="Virtual Machine">VM</abbr>
+involves many other things, in fact, by recreating that port we could
+make things even worse because it will leave some dirty data around.</p>
+<h2 id="the-networking-ovn-solution">The <a href="https://docs.openstack.org/networking-ovn/latest/">networking-ovn</a> solution</h2>
+<p>The solution used by the networking-ovn driver relies on the Neutron's
+revision_number attribute. In summary, for each resource in the
+Neutron database there's an attribute called revision_number which gets
+incremented on every update, for example:</p>
+<pre><code>$ openstack port create --network nettest porttest
+...
+| revision_number | 2 |
+...
+
+$ openstack port set porttest --mac-address 11:22:33:44:55:66
+
+$ mysql -e &quot;use neutron; select standard_attr_id from ports \
+where id=\&quot;91c08021-ded3-4c5a-8d57-5b5c389f8e39\&quot;;&quot;
++------------------+
+| standard_attr_id |
++------------------+
+|             1427 |
++------------------+
+
+$ mysql -e &quot;use neutron; SELECT revision_number FROM \
+standardattributes WHERE id=1427;&quot;
++-----------------+
+| revision_number |
++-----------------+
+|               3 |
++-----------------+
+</code></pre>
+
+<p>The revision_number attribute is used by networking-ovn to solve the
+inconsistency problem in four situations:</p>
+<h3 id="1-storing-the-revision_number-in-the-ovn-database">1. Storing the revision_number in the <abbr title="Open Virtual Network">OVN</abbr> database</h3>
+<p>To be able to compare the version of the resource in Neutron against the
+version in <abbr title="Open Virtual Network">OVN</abbr> we first need to know which version the <abbr title="Open Virtual Network">OVN</abbr> resource is
+present at.</p>
+<p>Fortunately, each table in the <abbr title="Open Virtual Network">OVN</abbr> Northbound database<sup id="fnref-1"><a class="footnote-ref" href="#fn-1">1</a></sup> contains
+a special column called external_ids which external systems (such as
+Neutron) can use to store information about its own resources that
+corresponds to the entries in the <abbr title="Open Virtual Network">OVN</abbr> database.</p>
+<p>In our solution, every time a resource is created or updated by
+networking-ovn, the Neutron revision_number related to that change
+will be stored in the external_ids column of that resource in the <abbr title="Open Virtual Network">OVN</abbr>
+database. That allows networking-ovn to look at both databases and detect
+whether the version in <abbr title="Open Virtual Network">OVN</abbr> is up-to-date with Neutron or not. Here's
+how the revision_number is stored:</p>
+<pre><code>$ ovn-nbctl list Logical_Switch_Port
+...
+external_ids        : {&quot;neutron:cidrs&quot;=&quot;&quot;,
+&quot;neutron:device_id&quot;=&quot;&quot;, &quot;neutron:device_owner&quot;=&quot;&quot;,
+&quot;neutron:network_name&quot;=&quot;neutron-139fd18c-cdba-4dfe-8030-2da39c70d238&quot;,
+&quot;neutron:port_name&quot;=porttest,
+&quot;neutron:project_id&quot;=&quot;8563f800ffc54189a145033d5402c922&quot;,
+&quot;neutron:revision_number&quot;=&quot;3&quot;,
+&quot;neutron:security_group_ids&quot;=&quot;b7def5c3-8776-4942-97af-2985c4fdccea&quot;}
+...
+
+</code></pre>
+
+<h3 id="2-performing-a-compare-and-swap-operation-based-on-the-revision_number">2. Performing a <a href="https://en.wikipedia.org/wiki/Compare-and-swap">compare-and-swap</a> operation based on the revision_number</h3>
+<p>To ensure correctness when updating the <abbr title="Open Virtual Network">OVN</abbr> database, specifically when
+multiple updates are racing to change the same resource, we need to
+prevent older updates from overwritten newer ones.</p>
+<p>The solution we found for this problem was to create a special <a href="https://github.com/openstack/networking-ovn/blob/4a5b0564de38d0d43d821dc8d8d21faba9589a8d/networking_ovn/ovsdb/commands.py#L1023"><abbr title="Open vSwitch Database">OVSDB</abbr>
+command</a> that runs as part of the transaction which is updating
+the resource in the <abbr title="Open Virtual Network">OVN</abbr> database and prevent changes with a lower
+revision_number to be committed. To achieve this, the <a href="https://github.com/openstack/networking-ovn/blob/4a5b0564de38d0d43d821dc8d8d21faba9589a8d/networking_ovn/ovsdb/commands.py#L1023"><abbr title="Open vSwitch Database">OVSDB</abbr> command</a>
+does two things:</p>
+<p>1 - Add a <a href="https://github.com/openstack/networking-ovn/blob/4a5b0564de38d0d43d821dc8d8d21faba9589a8d/networking_ovn/ovsdb/commands.py#L1092">verify operation</a> to the external_ids column in the <abbr title="Open Virtual Network">OVN</abbr>
+database so that if another client modifies that column mid-operation
+the transaction will be restarted.</p>
+<p>A better explanation of what "verify" does is described in the doc
+string of the Transaction class in the <a href="https://github.com/openvswitch/ovs/blob/3728b3b0316b44d1f9181be115b63ea85ff5883c/python/ovs/db/idl.py#L1014-L1055">OVS code</a> itself, I quote:</p>
+<blockquote>
+<p>"Because <abbr title="Open vSwitch Database">OVSDB</abbr> handles multiple clients, it can happen that between
+the time that <abbr title="Open vSwitch Database">OVSDB</abbr> client A reads a column and writes a new value,
+<abbr title="Open vSwitch Database">OVSDB</abbr> client B has written that column. Client A's write should not
+ordinarily overwrite client B's, especially if the column in question
+is a "map" column that contains several more or less independent
+data items. If client A adds a "verify" operation before it writes
+the column, then the transaction fails in case client B modifies it
+first. Client A will then see the new value of the column and compose
+a new transaction based on the new contents written by client B."</p>
+</blockquote>
+<p>2 - Compare the revision_number from the Neutron update against what
+is presently stored in the <abbr title="Open Virtual Network">OVN</abbr> database. If the version in the <abbr title="Open Virtual Network">OVN</abbr>
+database is already higher than the version in the update, <a href="https://github.com/openstack/networking-ovn/blob/4a5b0564de38d0d43d821dc8d8d21faba9589a8d/networking_ovn/ovsdb/commands.py#L1088-L1090">abort the
+transaction</a>. Here's a pseudo scenario where two concurrent updates
+are committed in the wrong order and how the solution above will deal
+with the problem:</p>
+<pre><code>Neutron worker 1 (NW-1): Updates port A with address X (revision_number: 2)
+
+Neutron worker 2 (NW-2): Updates port A with address Y (revision_number: 3)
+
+TRANSACTION 1: NW-2 transaction is committed first and the OVN resource
+now has revision_number 3 in it's external_ids column
+
+TRANSACTION 2: NW-1 transaction detects the change in the external_ids
+column and is restarted
+
+TRANSACTION 2: NW-1 the OVSDB command now sees that the OVN resource
+is at revision_number 3, which is higher than the update version
+(revision_number 2) and aborts the transaction.
+</code></pre>
+
+<h3 id="3-detecting-inconsistent-resources">3. Detecting inconsistent resources</h3>
+<p>When things are working as expected the two items above should ensure
+that the Neutron and <abbr title="Open Virtual Network">OVN</abbr> databases are in a consistent state but, what
+happens when things go bad ? For example, if the connectivity with the
+<abbr title="Open Virtual Network">OVN</abbr> database is temporarily lost, new updates will start to fail and as
+stated in <a href="#problem-2-backend-failures">problem 2</a> rolling back those
+changes in the Neutron database is not always a good idea.</p>
+<p>Before this solution we used to maintain a <a href="https://github.com/openstack/networking-ovn/blob/4a5b0564de38d0d43d821dc8d8d21faba9589a8d/networking_ovn/ovn_db_sync.py">script</a> that would scan
+both databases and fix all the inconsistencies between them but, depending
+on the size of the deployment that operation can be very slow. We needed
+a better way.</p>
+<p>The solution for the detection problem was to create an additional table
+in the Neutron database (called "ovn_revision_numbers") with a schema
+that look like this:</p>
+<table>
+<thead>
+<tr>
+<th>Column name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>standard_attr_id</td>
+<td>Integer</td>
+<td>Primary key. The reference ID from the standardattributes table in Neutron for that resource. ONDELETE SET NULL.</td>
+</tr>
+<tr>
+<td>resource_type</td>
+<td>String</td>
+<td>Primary key. The type of the resource (e.g, ports, routers, ...)</td>
+</tr>
+<tr>
+<td>resource_uuid</td>
+<td>String</td>
+<td>The UUID of the resource</td>
+</tr>
+<tr>
+<td>revision_number</td>
+<td>Integer</td>
+<td>The version of the object present in <abbr title="Open Virtual Network">OVN</abbr></td>
+</tr>
+<tr>
+<td>acquired_at</td>
+<td>DateTime</td>
+<td>The time that the entry was create. For troubleshooting purposes</td>
+</tr>
+<tr>
+<td>updated_at</td>
+<td>DateTime</td>
+<td>The time that the entry was updated. For troubleshooting purposes</td>
+</tr>
+</tbody>
+</table>
+<p>This table would serve as a "cache" for the revision numbers correspondent
+to the <abbr title="Open Virtual Network">OVN</abbr> resources in the Neutron database.</p>
+<p>For the different operations: Create, update and delete; this table will
+be used as:</p>
+<h4 id="create-operation">Create operation</h4>
+<p>Neutron has a concept of "precommit" and "postcommit" hooks for the
+drivers to implement when dealing with its resources. Basically, the
+precommit hook is invoked mid-operation when the Neutron's database
+transaction hasn't being committed yet. Also important, the context passed
+to the precommit hook will contain a session to the active transaction
+which drivers can use to make other changes to the database that will
+be part of the same commit. In the postcommit hook, the data is already
+fully persisted in Neutron's database and this is where drivers are
+suppose to translate the changes to the <abbr title="Software-Defined Networking">SDN</abbr> backend.</p>
+<p>Now, to detect inconsistencies of a newly created resource, a new
+entry in the ovn_revision_numbers table will be created using the
+precommit hook for that resource and the same database transaction. The
+revision_number column for the new entry will have a placeholder value
+(we use -1) until the resource is successfully created in the <abbr title="Open Virtual Network">OVN</abbr> database
+(in the postcommit hook) and then the revision_number is bumped. If a
+resource fails to be created in <abbr title="Open Virtual Network">OVN</abbr>, the revision_number column in the
+ovn_revision_numbers table for that resource will still be set to -1
+(the placeholder value) which is <a href="https://github.com/openstack/networking-ovn/blob/4a5b0564de38d0d43d821dc8d8d21faba9589a8d/networking_ovn/db/maintenance.py#L24">different</a> than it's correspondent
+entry in the standardattributes table (which is updated as part of the
+Neutron's database transaction).</p>
+<p>By looking at the differences in the revision_number's on both tables
+is how inconsistencies are detected in the system.</p>
+<p>The pseudo code for the create operation looks like this:</p>
+<pre><code>def create_port_precommit(context, port):
+    create_initial_revision(port['id'], revision_number=-1,
+                            session=context.session)
+
+def create_port_postcommit(port):
+    create_port_in_ovn(port)
+    bump_revision(port['id'], revision_number=port['revision_number'])
+</code></pre>
+
+<h4 id="update-operation">Update operation</h4>
+<p>Every time an update to a resource is successfully committed in
+the <abbr title="Open Virtual Network">OVN</abbr> database, the revision_number for that resource in the
+ovn_revision_numbers table will be bumped to match the revision_number
+in the standardattributes table. That way if something fails on the <abbr title="Open Virtual Network">OVN</abbr>
+side, the revision_number's from these two tables will be <a href="https://github.com/openstack/networking-ovn/blob/4a5b0564de38d0d43d821dc8d8d21faba9589a8d/networking_ovn/db/maintenance.py#L24">different</a>
+and inconsistencies will be detect in the same way as they are in the
+<a href="#create-operation">create operation</a>.</p>
+<p>The pseudo code for the delete operation looks like this:</p>
+<pre><code>def update_port_postcommit(port):
+    update_port_in_ovn(port)
+    bump_revision(port['id'], revision_number=port['revision_number'])
+</code></pre>
+
+<h4 id="delete-operation">Delete operation</h4>
+<p>The standard_attr_id column in the ovn_revision_numbers table is a
+foreign key constraint with a ONDELETE=SET NULL set. Which means that,
+upon Neutron deleting a resource the standard_attr_id column in the
+ovn_revision_numbers table will be set to NULL.</p>
+<p>If deleting a resource succeeds in Neutron but fails in <abbr title="Open Virtual Network">OVN</abbr>, the
+inconsistency can be detect by looking at all resources where the
+standard_attr_id column <a href="https://github.com/openstack/networking-ovn/blob/4a5b0564de38d0d43d821dc8d8d21faba9589a8d/networking_ovn/db/maintenance.py#L45">equals to NULL</a>.</p>
+<p>When the deletion succeeds in both databases the entry in the
+ovn_revision_numbers table can then be delete as well.</p>
+<p>The pseudo code for the delete operation looks like this:</p>
+<pre><code>def delete_port_postcommit(ctx, port):
+    delete_port_in_ovn(port)
+    delete_revision(port['id'])
+</code></pre>
+
+<h3 id="4-fixing-inconsistent-resources">4. Fixing inconsistent resources</h3>
+<p>Now that the algorithm to detected inconsistencies has been optimized
+we were able to create a <a href="https://github.com/openstack/networking-ovn/blob/master/networking_ovn/common/maintenance.py#L85">maintenance task</a> that runs periodically
+(every 5 minutes) and is responsible for detecting and fixing any
+inconsistencies it may find in the system.</p>
+<p>It's important to note that only one instance of this maintenance task
+will be actively running in the whole cluster at a time, all other
+instances will be in standby mode (active-standby HA). To achieve that,
+each maintenance task instance will attempt to acquire an <a href="https://tools.ietf.org/html/rfc7047#section-4.1.8"><abbr title="Open vSwitch Database">OVSDB</abbr> named
+lock</a> and only the instance that currently <a href="https://github.com/openstack/networking-ovn/blob/4a5b0564de38d0d43d821dc8d8d21faba9589a8d/networking_ovn/common/maintenance.py#L218-L221">holds the lock</a>
+will make active changes to the system.</p>
+<p>The maintenance task operation is composed by two steps:</p>
+<ol>
+<li>Detect and fix resources that failed to be created or updated</li>
+<li>Detect and fix resources that failed to be deleted</li>
+</ol>
+<p>Resources that failed to be created or updated will have their
+standard_attr_id column pointing to the numerical id of its counterpart
+in the standardattributes table but, their revision_number column will
+be different.</p>
+<p>When inconsistent resources like that are found, the maintenance task will
+first try to fetch that resource from the <abbr title="Open Virtual Network">OVN</abbr> database and; if found, the
+resource is updated to what is latest in the Neutron database and then
+have their revision_number bumped in the ovn_revision_numbers table. If
+the resource is not found, it will be first created in <abbr title="Open Virtual Network">OVN</abbr> and upon
+success its revision_number will be bumped in the ovn_revision_numbers
+table.</p>
+<p>Resources that failed to be deleted will have their standard_attr_id
+column <a href="https://github.com/openstack/networking-ovn/blob/4a5b0564de38d0d43d821dc8d8d21faba9589a8d/networking_ovn/db/maintenance.py#L45">set to NULL</a>. To fix this type of inconsistency, the
+maintenance task will try to fetch the resource from the <abbr title="Open Virtual Network">OVN</abbr> database
+and; if found, the resource and its entry in the ovn_revision_numbers
+are deleted. If not found, only the entry in the ovn_revision_numbers
+is deleted.</p>
+<p>Note that, <a href="https://github.com/openstack/networking-ovn/blob/4a5b0564de38d0d43d821dc8d8d21faba9589a8d/networking_ovn/common/constants.py#L107-L125">the order in which the resources are fixed</a> is
+important. When fixing creations and updates the maintenance task will
+start fixing the root resources (networks, security groups, etc...) and
+leave the leaf ones to the end (ports, floating ips, security group rules,
+etc...). That's because, say a network and a port (that belongs to that
+network) failed to be created, if it tries to create the port prior to
+creating the network that operation will fail again and it will only
+be fixed on the next iteration of the maintenance task. The order also
+matters for deletion but in the opposite direction, it's preferable to
+delete the leaf resources before the root ones to avoid any conflict.</p>
+<h2 id="conclusion-and-other-notes">Conclusion and other notes</h2>
+<p>This was a long post but I hope it will make it easier for people to
+understand with a certain level of detail how <a href="https://docs.openstack.org/networking-ovn/latest/">networking-ovn</a> is
+dealing with this problem.</p>
+<p>Also, In the <a href="https://www.openstack.org/ptg/">OpenStack <abbr title="Project Teams Gathering">PTG</abbr></a> for the Rocky cycle other Neutron
+driver developers were interested in implementing this approach for
+their own drivers. It was then decided to attempt to make this approach
+more generic<sup id="fnref-2"><a class="footnote-ref" href="#fn-2">2</a></sup> and migrate the code to the Neutron's core repository so
+drivers can consume it and avoid duplication. The specification proposing
+this change in Neutron can be found <a href="https://review.openstack.org/#/c/565463">here</a>.</p>
+<div class="footnote">
+<hr>
+<ol>
+<li id="fn-1">
+<p>Take a look at the <a href="http://www.openvswitch.org//support/dist-docs/ovn-architecture.7.html"><abbr title="Open Virtual Network">OVN</abbr> architecture</a> for more information about
+the Northbound and Southbound databases in <abbr title="Open Virtual Network">OVN</abbr>&#160;<a class="footnote-backref" href="#fnref-1" title="Jump back to footnote 1 in the text">&#8617;</a></p>
+</li>
+<li id="fn-2">
+<p>For example, by removing the dependency on things like the <a href="https://tools.ietf.org/html/rfc7047#section-4.1.8"><abbr title="Open vSwitch Database">OVSDB</abbr>
+named locks</a>. Please check the <a href="https://review.openstack.org/#/c/565463">proposed specification</a>
+for Neutron.&#160;<a class="footnote-backref" href="#fnref-2" title="Jump back to footnote 2 in the text">&#8617;</a></p>
+</li>
+</ol>
+</div>
+		<div>
+	    
+            <div class="footer">
+               
+                   <p>(c) 2016 - 2018, Lucas Alvares Gomes<br>The content of this site is licensed under the <a href='https://creativecommons.org/licenses/by-sa/4.0/'>CC BY-SA 4.0</a>, and the <a href='https://github.com/umago/personal-site'>code</a> is <a href='https://raw.githubusercontent.com/umago/personal-site/gh-pages/LICENSE'>MIT</a>.</p>
+               
+            </div>
+        </div>
+    </body>
+
+</html>
