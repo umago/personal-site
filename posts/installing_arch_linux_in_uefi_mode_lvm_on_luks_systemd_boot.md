@@ -7,7 +7,7 @@ I've been a Fedora user for a couple of years now (~5 years, before
 joining Red Hat) and all my machines run on it. But, I just recently
 got a new laptop and decided to give Arch Linux a go. There's no major
 reason for the change, I just wanted to try something different and was
-specifically looking for a rolling-release distro[^1].
+specifically looking for a rolling-release distribution[^1].
 
 The [Arch Wiki][0] is fantastic and so is the [installion guide][1] but,
 it can be a lot of reading[^2] specially if you deviate from the standard
@@ -32,3 +32,7 @@ used in the video please check the [Arch Wiki][0].
     a work-in-progress stage for the upcoming stable release.
 [^2]:
     It's totally worth it tho!
+
+*[UEFI]: Unified Extensible Firmware Interface
+*[LVM]: Logical Volume Manager
+*[LUKS]: Linux Unified Key Setup
