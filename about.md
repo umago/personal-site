@@ -8,5 +8,7 @@ and related [OpenStack](https://www.openstack.org/) projects.
 In the past I worked on the Bare Metal Provisioning program (a.k.a Ironic)
 within [OpenStack](https://www.openstack.org/) as a core reviewer.
 
+Feel free to contact me by email at lucasagomes [at] gmail [dot] com.
+
 Anything posted in this site is my opinion, and in no way reflects the
 policies or practices of my employer.
