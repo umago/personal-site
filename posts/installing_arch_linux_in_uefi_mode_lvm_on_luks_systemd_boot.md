@@ -1,8 +1,6 @@
 title: Installing Arch Linux in UEFI mode + LVM on LUKS + systemd-boot
 date: 10-09-2016
 
-# Installing Arch Linux in UEFI mode + LVM on LUKS + systemd-boot
-
 I've been a Fedora user for a couple of years now (~5 years, before
 joining Red Hat) and all my machines run on it. But, I just recently
 got a new laptop and decided to give Arch Linux a go. There's no major

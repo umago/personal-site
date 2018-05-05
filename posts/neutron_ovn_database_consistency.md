@@ -1,8 +1,6 @@
 title: Neutron & OVN database consistency
 date: 03-05-2018
 
-# Neutron & OVN database consistency
-
 In this post I will talk about a problem that affects many (if not all)
 drivers in [OpenStack Neutron][0] and how it was solved for the OVN driver
 (AKA [networking-ovn][1]).

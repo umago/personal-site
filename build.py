@@ -37,19 +37,17 @@ def get_markdown_files():
     return md_list
 
 
-def _sanitize_posts_metadata(posts):
-    for p in posts:
-        for key, value in p.items():
+def _sanitize_metadata(meta):
+    for key, value in meta.items():
 
-            if isinstance(value, list):
-                value = value[0]
+        if isinstance(value, list):
+            value = value[0]
 
-            if key == 'date':
-                value = datetime.datetime.strptime(value, "%d-%m-%Y")
+        if key == 'date':
+            value = datetime.datetime.strptime(value, "%d-%m-%Y")
 
-            p[key] = value
-
-    return sorted(posts, key=lambda k: k['date'], reverse=True)
+        meta[key] = value
+    return meta
 
 
 def build_html(template, template_args):
@@ -63,22 +61,25 @@ def build_html(template, template_args):
                                            'markdown.extensions.tables',
                                            'markdown.extensions.toc',
                                            'markdown.extensions.abbr'])
+        is_post = src.startswith('./posts/')
+        dst_file = os.path.splitext(src)[0] + '.html'
+
         with open(src, 'r') as f:
             html = md.convert(f.read())
 
-        dst_file = os.path.basename(src)
-        dst_file = os.path.splitext(src)[0] + '.html'
-
-        with open(dst_file, 'w') as f:
-            f.write(template.render(**template_args, __content__=html))
-
-        if src.startswith('./posts/'):
-            meta = md.Meta
+        extra_args = {}
+        if is_post:
+            meta = _sanitize_metadata(md.Meta)
+            extra_args['__post_title__'] = meta['title']
+            extra_args['__post_date__'] = meta['date']
             meta['__href__'] = os.path.join(
                 'posts', os.path.basename(dst_file))
             posts.append(meta)
 
-    posts = _sanitize_posts_metadata(posts)
+        with open(dst_file, 'w') as f:
+            f.write(template.render(**template_args, **extra_args, __content__=html,))
+
+    posts = sorted(posts, key=lambda k: k['date'], reverse=True)
     with open('index.html', 'w') as f:
         f.write(template.render(**template_args, __posts__=posts))
 

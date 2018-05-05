@@ -31,6 +31,10 @@
 	    {% endif %}
 
 	    {% if __content__ %}
+                {% if __post_title__ %}
+                    <h1 class="post_title">{{ __post_title__ }}</h1>
+                    <p class="post_date">{{ __post_date__.strftime('%d %B, %Y') }}</p>
+	        {% endif %}
 		<div class="content">
 		    {{ __content__ }}
 		<div>
