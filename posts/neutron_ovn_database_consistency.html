@@ -117,7 +117,7 @@ inconsistency problem in four situations:</p>
 <p>To be able to compare the version of the resource in Neutron against the
 version in <abbr title="Open Virtual Network">OVN</abbr> we first need to know which version the <abbr title="Open Virtual Network">OVN</abbr> resource is
 present at.</p>
-<p>Fortunately, each table in the <abbr title="Open Virtual Network">OVN</abbr> Northbound database<sup id="fnref-1"><a class="footnote-ref" href="#fn-1">1</a></sup> contains
+<p>Fortunately, each table in the <abbr title="Open Virtual Network">OVN</abbr> Northbound database<sup id="fnref:1"><a class="footnote-ref" href="#fn:1">1</a></sup> contains
 a special column called external_ids which external systems (such as
 Neutron) can use to store information about its own resources that
 corresponds to the entries in the <abbr title="Open Virtual Network">OVN</abbr> database.</p>
@@ -358,20 +358,20 @@ dealing with this problem.</p>
 <p>Also, In the <a href="https://www.openstack.org/ptg/">OpenStack <abbr title="Project Teams Gathering">PTG</abbr></a> for the Rocky cycle other Neutron
 driver developers were interested in implementing this approach for
 their own drivers. It was then decided to attempt to make this approach
-more generic<sup id="fnref-2"><a class="footnote-ref" href="#fn-2">2</a></sup> and migrate the code to the Neutron's core repository so
+more generic<sup id="fnref:2"><a class="footnote-ref" href="#fn:2">2</a></sup> and migrate the code to the Neutron's core repository so
 drivers can consume it and avoid duplication. The specification proposing
 this change in Neutron can be found <a href="https://review.openstack.org/#/c/565463">here</a>.</p>
 <div class="footnote">
 <hr>
 <ol>
-<li id="fn-1">
+<li id="fn:1">
 <p>Take a look at the <a href="http://www.openvswitch.org//support/dist-docs/ovn-architecture.7.html"><abbr title="Open Virtual Network">OVN</abbr> architecture</a> for more information about
-the Northbound and Southbound databases in <abbr title="Open Virtual Network">OVN</abbr>&#160;<a class="footnote-backref" href="#fnref-1" title="Jump back to footnote 1 in the text">&#8617;</a></p>
+the Northbound and Southbound databases in <abbr title="Open Virtual Network">OVN</abbr>&#160;<a class="footnote-backref" href="#fnref:1" title="Jump back to footnote 1 in the text">&#8617;</a></p>
 </li>
-<li id="fn-2">
+<li id="fn:2">
 <p>For example, by removing the dependency on things like the <a href="https://tools.ietf.org/html/rfc7047#section-4.1.8"><abbr title="Open vSwitch Database">OVSDB</abbr>
 named locks</a>. Please check the <a href="https://review.openstack.org/#/c/565463">proposed specification</a>
-for Neutron.&#160;<a class="footnote-backref" href="#fnref-2" title="Jump back to footnote 2 in the text">&#8617;</a></p>
+for Neutron.&#160;<a class="footnote-backref" href="#fnref:2" title="Jump back to footnote 2 in the text">&#8617;</a></p>
 </li>
 </ol>
 </div>
@@ -379,7 +379,7 @@ for Neutron.&#160;<a class="footnote-backref" href="#fnref-2" title="Jump back t
 	    
             <div class="footer">
                
-                   <p>(c) 2016 - 2018, Lucas Alvares Gomes<br>The content of this site is licensed under the <a href='https://creativecommons.org/licenses/by-sa/4.0/'>CC BY-SA 4.0</a>, and the <a href='https://github.com/umago/personal-site'>code</a> is <a href='https://raw.githubusercontent.com/umago/personal-site/gh-pages/LICENSE'>MIT</a>.</p>
+                   <p>(c) 2016 - 2019, Lucas Alvares Gomes<br>The content of this site is licensed under the <a href='https://creativecommons.org/licenses/by-sa/4.0/'>CC BY-SA 4.0</a>, and the <a href='https://github.com/umago/personal-site'>code</a> is <a href='https://raw.githubusercontent.com/umago/personal-site/gh-pages/LICENSE'>MIT</a>.</p>
                
             </div>
         </div>
