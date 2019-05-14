@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+        <link rel="stylesheet" type="text/css" href="/style.css">
+        
+            <title>Lucas A. Gomes' Personal Page</title>
+        
+    </head>
+
+    <body>
+	<div class="wrapper">
+	    <div class="header">
+		<h1>~lucasgom.es</h1>
+		<ul>
+		    
+		        <li><a href="/index.html">home</a></li>
+		    
+		        <li><a href="/about.html">about</a></li>
+		    
+		        <li><a href="http://github.com/umago">github</a></li>
+		    
+		</ul>
+	    </div>
+	    
+
+	    
+                
+                    <h1 class="post_title">OVN: Transport Zones</h1>
+                    <p class="post_date">14 May, 2019</p>
+	        
+		<div class="content">
+		    <p>In this post, I present a new feature that recently landed in <a href="http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html">OVN</a>
+called Transport Zones (<abbr title="Also Known As">AKA</abbr> <abbr title="Transport Zones">TZs</abbr>).</p>
+<p>The patch implementing it can be found <a href="https://mail.openvswitch.org/pipermail/ovs-dev/2019-April/358314.html">here</a>.</p>
+<h2 id="problem-description">Problem description</h2>
+<p>With the recent interest in <a href="https://en.wikipedia.org/wiki/Edge_computing">Edge Computing</a>, we've started evaluating
+the current situation of <a href="http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html">OVN</a> for the task.</p>
+<p>One of problems identified was that <a href="http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html">OVN</a> always created a mesh of
+tunnels between every <abbr title="In OVN terminology, every node where the ovn-controller service is running is referred to as a Chassis.">Chassis</abbr> in the cloud and in the <a href="https://en.wikipedia.org/wiki/Edge_computing">Edge Computing</a>
+case, nodes in an edge site should not be able to communicate with nodes in
+every other edge site. In simpler terms, we needed a way to block tunnels
+to be formed between "edge-to-edge" while still allowing tunnels between
+"edge-to-central".</p>
+<p>The most natural solution we thought before was to use firewalls to
+block those undesirable tunnels but, that could lead to some unintended
+consequences since <abbr title="In OVN terminology, every node where the ovn-controller service is running is referred to as a Chassis.">Chassis</abbr> would still try to form those tunnels. It
+would just fail or timeout over and over again.</p>
+<p>That's when we thought about introducing a new feature in <a href="http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html">OVN</a> that
+would allow users to separate <abbr title="In OVN terminology, every node where the ovn-controller service is running is referred to as a Chassis.">Chassis</abbr> into different logical groups. And
+that's what Transport Zones are about.</p>
+<h2 id="transport-zones">Transport Zones</h2>
+<p>Transport Zones is a way to enable users to separate <abbr title="In OVN terminology, every node where the ovn-controller service is running is referred to as a Chassis.">Chassis</abbr> into one
+or more logical groups. If not set, <abbr title="In OVN terminology, every node where the ovn-controller service is running is referred to as a Chassis.">Chassis</abbr> will be considered part of
+a default group.</p>
+<p>Configuring Transport Zones is done by creating a key called
+<strong>ovn-transport-zones</strong> in the <em>external_ids</em> column of the <em>Open_vSwitch</em>
+table from the local OVS instance. The value is a string with the name
+of the Transport Zone that this instance is part of. Multiple Transport
+Zones can be specified with a comma-separated list. For example:</p>
+<pre><code>$ sudo ovs-vsctl set open . external-ids:ovn-transport-zones=tz1
+
+OR
+
+$ sudo ovs-vsctl set open . external-ids:ovn-transport-zones=tz1,tz2,tz3
+</code></pre>
+
+<p>Once the configuration is set, the <em>ovn-controller</em> will detect those
+changes and will update the <strong>transport_zones</strong> column of the <abbr title="In OVN terminology, every node where the ovn-controller service is running is referred to as a Chassis.">Chassis</abbr>
+table in the <a href="http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html">OVN Southbound Database</a> with the new data:</p>
+<pre><code>$ sudo ovn-sbctl list Chassis
+_uuid               : 8a48b880-4a00-4ab9-ae3a-2d7ac6b04279
+encaps              : [517da462-a8c1-488f-b2e2-f9b7190e77cb]
+external_ids        : {datapath-type=&quot;&quot;, iface-types=&quot;erspan,geneve,gre,internal,ip6erspan,ip6gre,lisp,patch,stt,system,tap,vxlan&quot;, ovn-bridge-mappings=&quot;&quot;}
+hostname            : central
+name                : central
+nb_cfg              : 0
+transport_zones     : [&quot;tz1&quot;, &quot;tz2&quot;, &quot;tz3&quot;]
+vtep_logical_switches: []
+
+...
+</code></pre>
+
+<p>And last, by updating the <abbr title="In OVN terminology, every node where the ovn-controller service is running is referred to as a Chassis.">Chassis</abbr> table, an OVSDB event will generated
+which all ovn-contollers will then handle and recalculate its tunnels
+based on the new Transport Zones information. <abbr title="In OVN terminology, every node where the ovn-controller service is running is referred to as a Chassis.">Chassis</abbr> with at least one
+common Transport Zone will have a tunnel formed between them.</p>
+<p>Tunnels can be checked by running the following command:</p>
+<pre><code>$ sudo ovs-vsctl find interface type=&quot;geneve&quot;
+_uuid               : 49f1e715-6cda-423b-a1b2-a8a83e5747e0
+admin_state         : up
+bfd                 : {}
+bfd_status          : {}
+cfm_fault           : []
+cfm_fault_status    : []
+cfm_flap_count      : []
+cfm_health          : []
+cfm_mpid            : []
+cfm_remote_mpids    : []
+cfm_remote_opstate  : []
+duplex              : []
+error               : []
+external_ids        : {}
+ifindex             : 6
+ingress_policing_burst: 0
+ingress_policing_rate: 0
+lacp_current        : []
+link_resets         : 0
+link_speed          : []
+link_state          : up
+lldp                : {}
+mac                 : []
+mac_in_use          : &quot;96:e4:e4:c7:ee:4c&quot;
+mtu                 : []
+mtu_request         : []
+name                : &quot;ovn-worker-0&quot;
+ofport              : 2
+ofport_request      : []
+options             : {csum=&quot;true&quot;, key=flow, remote_ip=&quot;192.168.50.101&quot;}
+other_config        : {}
+statistics          : {rx_bytes=0, rx_packets=0, tx_bytes=0, tx_packets=0}
+status              : {tunnel_egress_iface=&quot;eth1&quot;, tunnel_egress_iface_carrier=up}
+type                : geneve
+
+...
+</code></pre>
+
+<p>As you can see, everything is dynamic and no restart of services are
+required.</p>
+<h3 id="a-small-experiment">A small experiment</h3>
+<p>In order to see this feature in action, I'm going to deploy an <a href="http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html">OVN</a>
+environment using some <a href="https://github.com/danalsan/vagrants/">Vagrant boxes</a>. I will do it using the commands
+provided at Daniel's <a href="http://dani.foroselectronica.es/multinode-ovn-setup-509/">blog post</a> as a base for this experiment.</p>
+<p>Once the setup of the <strong>ovn-multinode</strong> Vagrant script is finished,
+we will have three nodes available:</p>
+<ul>
+<li>
+<p>Central node: A machine running the <em>ovsdb-servers</em> (North and
+  Southbound databases), <em>ovn-northd</em> and <em>ovn-controller</em>.</p>
+</li>
+<li>
+<p>Worker1 and Worker2 nodes: Two machines running <em>ovn-controller</em>
+  connected to Southbound database in the Central node.</p>
+</li>
+</ul>
+<p>To start, let's configure things in a way that a <abbr title="Virtual Machine">VM</abbr> running on Worker1
+can communicate with another <abbr title="Virtual Machine">VM</abbr> running on Worker2.</p>
+<p>From the <em>Central</em> node, let's create the topology as described in the
+<a href="http://dani.foroselectronica.es/multinode-ovn-setup-509/">blog post</a>:</p>
+<pre><code>sudo ovn-nbctl ls-add network1
+sudo ovn-nbctl lsp-add network1 vm1
+sudo ovn-nbctl lsp-add network1 vm2
+sudo ovn-nbctl lsp-set-addresses vm1 &quot;40:44:00:00:00:01 192.168.0.11&quot;
+sudo ovn-nbctl lsp-set-addresses vm2 &quot;40:44:00:00:00:02 192.168.0.12&quot;
+</code></pre>
+
+<p>Now, let's log into <em>Worker1</em> node and bind "vm1" to it:</p>
+<pre><code>sudo ovs-vsctl add-port br-int vm1 -- set Interface vm1 type=internal -- set Interface vm1 external_ids:iface-id=vm1
+sudo ip netns add vm1
+sudo ip link set vm1 netns vm1
+sudo ip netns exec vm1 ip link set vm1 address 40:44:00:00:00:01
+sudo ip netns exec vm1 ip addr add 192.168.0.11/24 dev vm1
+sudo ip netns exec vm1 ip link set vm1 up
+</code></pre>
+
+<p>And "vm2" to the <em>Worker2</em> node:</p>
+<pre><code>sudo ovs-vsctl add-port br-int vm2 -- set Interface vm2 type=internal -- set Interface vm2 external_ids:iface-id=vm2
+sudo ip netns add vm2
+sudo ip link set vm2 netns vm2
+sudo ip netns exec vm2 ip link set vm2 address 40:44:00:00:00:02
+sudo ip netns exec vm2 ip addr add 192.168.0.12/24 dev vm2
+sudo ip netns exec vm2 ip link set vm2 up
+</code></pre>
+
+<p>Let's ping "vm2" (running on <em>Worker2</em>) from "vm1" (running on <em>Worker1</em>):</p>
+<pre><code>$ sudo ip netns exec vm1 ping 192.168.0.12 -c 3
+PING 192.168.0.12 (192.168.0.12) 56(84) bytes of data.
+64 bytes from 192.168.0.12: icmp_seq=1 ttl=64 time=1.20 ms
+64 bytes from 192.168.0.12: icmp_seq=2 ttl=64 time=1.35 ms
+64 bytes from 192.168.0.12: icmp_seq=3 ttl=64 time=0.595 ms
+
+--- 192.168.0.12 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2004ms
+rtt min/avg/max/mdev = 0.595/1.053/1.355/0.329 ms
+</code></pre>
+
+<p>Great, it works! Let's now configure the Transport Zones following the
+rules below:</p>
+<ul>
+<li>
+<p>The <em>Central</em> node should be able to communicate with both <em>Worker1</em>
+  and <em>Worker2</em> nodes.</p>
+</li>
+<li>
+<p><em>Worker1</em> and <em>Worker2</em> should only be able to communicate with the
+  <em>Central</em> node. Not between themselves.</p>
+</li>
+</ul>
+<p>For that we need two Transport Zones, which in this examples we are going
+to name as "tz1" and "tz2". The <em>Central</em> node will be part of both <abbr title="Transport Zones">TZs</abbr>,
+<em>Worker1</em> will belong only to "tz1" and <em>Worker2</em> to "tz2".</p>
+<p>From the <em>Central</em> node, do:</p>
+<pre><code>$ sudo ovs-vsctl set open . external-ids:ovn-transport-zones=tz1,tz2
+</code></pre>
+
+<p>From the <em>Worker1</em> node, do:</p>
+<pre><code>$ sudo ovs-vsctl set open . external-ids:ovn-transport-zones=tz1
+</code></pre>
+
+<p>And, from the <em>Worker2</em> node, do:</p>
+<pre><code>$ sudo ovs-vsctl set open . external-ids:ovn-transport-zones=tz2
+</code></pre>
+
+<p>Let's check the tunnels on each node. In the <em>Central</em> node we have:</p>
+<pre><code>$ sudo ovs-vsctl find interface type=&quot;geneve&quot; | grep name
+name                : &quot;ovn-worker-0&quot;
+name                : &quot;ovn-worker-1&quot;
+</code></pre>
+
+<p><em>Worker1</em>:</p>
+<pre><code>$ sudo ovs-vsctl find interface type=&quot;geneve&quot; | grep name
+name                : &quot;ovn-centra-0&quot;
+</code></pre>
+
+<p><em>Worker2</em>:</p>
+<pre><code>$ sudo ovs-vsctl find interface type=&quot;geneve&quot; | grep name
+name                : &quot;ovn-centra-0&quot;
+</code></pre>
+
+<p>As you can see, the nodes <em>Worker1</em> and <em>Worker2</em> does not have a tunnel
+formed between them. That means that pinging "vm2" (running on <em>Worker2</em>)
+from "vm1" (running on <em>Worker1</em>) should be blocked:</p>
+<pre><code>$ sudo ip netns exec vm1 ping 192.168.0.12 -c 3
+PING 192.168.0.12 (192.168.0.12) 56(84) bytes of data.
+^C
+--- 192.168.0.12 ping statistics ---
+3 packets transmitted, 0 received, 100% packet loss, time 1999ms
+</code></pre>
+
+<h2 id="openstack-integration">OpenStack integration</h2>
+<p>Our next step now is to integrate the Transport Zones feature with
+the OpenStack <a href="https://docs.openstack.org/networking-ovn/latest/">networking-ovn</a> ML2 driver to provide for <a href="http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html">OVN</a>.</p>
+<h2 id="other-use-cases">Other use cases</h2>
+<p>Although created with the <a href="https://en.wikipedia.org/wiki/Edge_computing">Edge Computing</a> case in mind, this feature
+could potentially be used for several other use cases, including but not
+limited to:</p>
+<ul>
+<li>
+<p>Security Zones: Nodes in a more secure zone not being able to
+  exchange traffic with a node in a less secure zone.</p>
+</li>
+<li>
+<p>Parallel network infrastructure: A way of increasing resiliency in
+  large networks by creating a parallel infrastructure. Two different
+  networks with separate hardware (perhaps even different vendors to
+  protect against vulnerabilities in the network OS). In this case, you
+  would also want to prevent East/West traffic between the networks to
+  prevent inter-dependency.</p>
+</li>
+</ul>
+		<div>
+	    
+            <div class="footer">
+               
+                   <p>(c) 2016 - 2019, Lucas Alvares Gomes<br>The content of this site is licensed under the <a href='https://creativecommons.org/licenses/by-sa/4.0/'>CC BY-SA 4.0</a>, and the <a href='https://github.com/umago/personal-site'>code</a> is <a href='https://raw.githubusercontent.com/umago/personal-site/gh-pages/LICENSE'>MIT</a>.</p>
+               
+            </div>
+        </div>
+    </body>
+
+</html>
