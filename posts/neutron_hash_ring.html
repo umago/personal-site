@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+        <link rel="stylesheet" type="text/css" href="/style.css">
+        
+            <title>Lucas A. Gomes' Personal Page</title>
+        
+    </head>
+
+    <body>
+	<div class="wrapper">
+	    <div class="header">
+		<h1>~lucasgom.es</h1>
+		<ul>
+		    
+		        <li><a href="/index.html">home</a></li>
+		    
+		        <li><a href="/about.html">about</a></li>
+		    
+		        <li><a href="http://github.com/umago">github</a></li>
+		    
+		</ul>
+	    </div>
+	    
+
+	    
+                
+                    <h1 class="post_title">Neutron Distributed OVSDB events handler (Hash Ring)</h1>
+                    <p class="post_date">15 November, 2024</p>
+	        
+		<div class="content">
+		    <p>In this post I will talk about a bottleneck problem handling OVSDB events that
+we had in the ML2/<abbr title="Open Virtual Network">OVN</abbr> driver for <a href="https://docs.openstack.org/neutron/latest/">OpenStack Neutron</a> and how we solved it.</p>
+<h2 id="problem-description">Problem description</h2>
+<p>In the ML2/<abbr title="Open Virtual Network">OVN</abbr> driver, the OVSDB Monitor class is responsible for
+listening to the OVSDB events and performing certain actions on the
+them. We use it extensively for various tasks including critical ones
+such as monitoring for port binding events (in order to notify <a href="https://docs.openstack.org/neutron/latest/">Neutron</a>
+or <a href="https://docs.openstack.org/nova/latest/">Nova</a> that a port has been bound to a given chassis). This OVSDB
+Monitor class used a distributed OVSDB lock to ensure that only a single
+worker was active and handling these events at a time.</p>
+<p>This approach, while effective during periods of low activity, became
+a bottleneck with ports taking a long time to transition to active when
+the cluster experienced high demand. Also, In the event of a failover,
+all events would be lost until a new worker became active.</p>
+<p><a href=/posts/images/neutron_hash_ring_problem_diagram.png target="_blank">
+<img src=/posts/images/neutron_hash_ring_problem_diagram.png width=70% class="center" title="Neutron Hash Ring Problem Diagram">
+</a></p>
+<h2 id="distributed-ovsdb-events-handler">Distributed OVSDB events handler</h2>
+<p>In order to fix this problem, it was proposed using a <a href="https://en.wikipedia.org/wiki/Consistent_hashing">Consistent Hash
+Ring</a> to distribute the load of handling events across multiple
+workers.</p>
+<p>A new table called ovn_hash_ring was created in the Neutron Database
+where the Neutron Workers capable of handling OVSDB events will be
+registered. The table contains the following columns:</p>
+<table>
+<thead>
+<tr>
+<th>Column name</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>node_uuid</td>
+<td>String</td>
+<td>Primary key. The unique identification of a Neutron Worker.</td>
+</tr>
+<tr>
+<td>hostname</td>
+<td>String</td>
+<td>The hostname of the machine this Node is running on.</td>
+</tr>
+<tr>
+<td>created_at</td>
+<td>DateTime</td>
+<td>The time that the entry was created. For troubleshooting purposes.</td>
+</tr>
+<tr>
+<td>updated_at</td>
+<td>DateTime</td>
+<td>The time that the entry was updated. Used as a heartbeat to indicate that the Node is still alive.</td>
+</tr>
+</tbody>
+</table>
+<p>This table is used to form the <a href="https://en.wikipedia.org/wiki/Consistent_hashing">Consistent Hash Ring</a>. Fortunately,
+a implementation already exists in a library called <a href="https://docs.openstack.org/tooz/latest/">tooz</a> for
+OpenStack. It was contributed by the <a href="https://docs.openstack.org/ironic/latest/">OpenStack Ironic</a> team which
+also uses this data structure in order to spread the API request load
+across multiple Ironic Conductors.</p>
+<p>Here's an example of how a <a href="https://en.wikipedia.org/wiki/Consistent_hashing">Consistent Hash Ring</a> works using <a href="https://docs.openstack.org/tooz/latest/">tooz</a>:</p>
+<pre><code>from tooz import hashring
+
+hring = hashring.HashRing({'worker1', 'worker2', 'worker3'})
+
+# Returns set(['worker3'])
+hring[b'event-id-1']
+
+# Returns set(['worker1'])
+hring[b'event-id-2']
+</code></pre>
+<h3 id="how-ovsdb-monitor-will-use-the-new-hash-ring-data-structure">How OVSDB Monitor will use the new Hash Ring data structure</h3>
+<p>Every instance of the OVSDB Monitor class will register itself in
+the database and start listening to the events coming from the OVSDB
+database.  Each OVSDB Monitor instance have a unique ID that is part of
+the <a href="https://en.wikipedia.org/wiki/Consistent_hashing">Consistent Hash Ring</a>.</p>
+<p>When an event arrives, each OVSDB Monitor instance will hash the event
+UUID against the hash ring which will return one OVSDB Monitor instance
+ID. If this ID matches with the instance own ID then that instance will
+the one that process the event.</p>
+<p><a href=/posts/images/neutron_hash_ring_solution_diagram.png target="_blank">
+<img src=/posts/images/neutron_hash_ring_solution_diagram.png width=70% class="center" title="Neutron Hash Ring Solution Diagram">
+</a></p>
+<p>In the image above, colors are used to illustrate the change from a
+one-to-one relationship between Controllers and Workers in ACTIVE-STANDBY
+mode that we had before to a more scalable configuration with the Hash
+Ring where each Controller can now host multiple Workers in ACTIVE-ACTIVE
+mode.</p>
+<h2 id="benchmarking-the-new-changes">Benchmarking the new changes</h2>
+<p>To assess the improvements from using the Hash Ring we used a performance
+analysis tool for OpenStack called <a href="https://github.com/cloud-bulldozer/browbeat">Browbeat</a>. We also created a new
+<a href="https://github.com/danalsan/browbeat/commit/0ff72da52ddf17aa9f7269f191eebd890899bdad">scenario</a> for <a href="https://github.com/cloud-bulldozer/browbeat">Browbeat</a> that would take <a href="https://docs.openstack.org/nova/latest/">OpenStack Nova</a> out of
+the picture and simulates a <abbr title="Virtual Machine">VM</abbr> on the available <abbr title="A software that you can use to run multiple virtual machines on a single physical machine">hypervisors</abbr> by creating
+a network namespace and attaching a port to the OVS bridge. This enabled
+us to simulate numerous <abbr title="Virtual Machines">VMs</abbr> booting concurrently without requiring the
+resources to host them all.</p>
+<p>In addition to comparing the OVSDB Monitor class with and without the
+<a href="https://en.wikipedia.org/wiki/Consistent_hashing">Consistent Hash Ring</a>, we also tested ML2/<abbr title="Open Virtual Network">OVN</abbr> against ML2/OVS,
+which was the default driver in <a href="https://docs.openstack.org/neutron/latest/">OpenStack Neutron</a> at the time.</p>
+<p>With a concurrency set to 25 and a total of 150 <abbr title="Virtual Machines">VMs</abbr> being provisioned,
+the comparison between ML2/<abbr title="Open Virtual Network">OVN</abbr> and ML2/OVS <strong>BEFORE</strong> the introduction
+of the distributed OVSDB event handler looked like this:</p>
+<p><a href=/posts/images/neutron_hash_ring_before_ovs_c_25_t_150.png target="_blank">
+<img src=/posts/images/neutron_hash_ring_before_ovs_c_25_t_150.png width=70% class="center" title="Before: ML2/OVN vs ML2/OVS (Concurrency:25, Total:150)">
+</a></p>
+<p>The average wait time for a ML2/<abbr title="Open Virtual Network">OVN</abbr> port to become active was 45.7
+seconds, whereas in ML2/OVS, it was only 3.7 seconds. However, in ML2/OVS,
+it took an average of 43.6 seconds for a <abbr title="Virtual Machine">VM</abbr> to respond to a ping, while in
+ML2/<abbr title="Open Virtual Network">OVN</abbr>, it was only 5.7 seconds. Overall, the two drivers were similar,
+with ML2/OVS being slightly faster.</p>
+<p>Using the same 25 concurrency and 150 total <abbr title="Virtual Machines">VMs</abbr> being provisioned,
+this is what ML2/<abbr title="Open Virtual Network">OVN</abbr> in comparison with ML2/OVS looked like with the
+distributed OVSDB event handler:</p>
+<p><a href=/posts/images/neutron_hash_ring_after_ovs_c_25_t_150.png target="_blank">
+<img src=/posts/images/neutron_hash_ring_after_ovs_c_25_t_150.png width=70% class="center" title="After: ML2/OVN vs ML2/OVS (Concurrency:25, Total:150)">
+</a></p>
+<p>The time it took for ports to become active in ML2/<abbr title="Open Virtual Network">OVN</abbr> dropped to 2
+seconds (from an average of 45.7 seconds) and the average time it took
+for a <abbr title="Virtual Machine">VM</abbr> to respond to a ping was 8.5 seconds. That's an impressive
+improvement, with the distributed event handler a port only takes a
+fraction (4.4%) of the original time to become active!</p>
+<p>Here's is the ML2/<abbr title="Open Virtual Network">OVN</abbr> numbers side-by-side:</p>
+<p><a href=/posts/images/neutron_hash_ring_before_after_ovn_c_25_t_150.png target="_blank">
+<img src=/posts/images/neutron_hash_ring_before_after_ovn_c_25_t_150.png width=70% class="center" title="ML2/OVN comparison (Concurrency:25, Total:150)">
+</a></p>
+<p>This difference becomes even more apparent when we increase the
+concurrency to 50 (up from 25). Here’s how the numbers look:</p>
+<p><a href=/posts/images/neutron_hash_ring_before_after_ovn_c_50_t_150.png target="_blank">
+<img src=/posts/images/neutron_hash_ring_before_after_ovn_c_50_t_150.png width=70% class="center" title="AML2/OVN comparison (Concurrency:50, Total:150)">
+</a></p>
+<p>Now the average time for a port to become active dropped from 94.6 seconds
+to only 3 seconds. Note that it took longer for the port to respond to a
+ping on average with the new approach, that's because <a href="https://www.ovn.org/support/dist-docs/ovn-controller.8.txt">ovn-controller</a>
+will now install more flows per second, putting more pressure on <a href="http://www.openvswitch.org/support/dist-docs/ovs-vswitchd.8.html">Open
+vSwitch daemon</a> (running on the compute nodes) and this is observed
+through its CPU utilization.</p>
+<p>Before, without the distributed event handler:
+<a href=/posts/images/neutron_hash_ring_before_openvswitch_compute_0.png target="_blank">
+<img src=/posts/images/neutron_hash_ring_before_openvswitch_compute_0.png width=70% class="center" title="Before: OpenVSwitch Compute-0 CPU Utilization (Concurrency:50, Total:150)">
+</a></p>
+<p>After, with the distributed event handler:
+<a href=/posts/images/neutron_hash_ring_after_openvswitch_compute_0.png target="_blank">
+<img src=/posts/images/neutron_hash_ring_after_openvswitch_compute_0.png width=70% class="center" title="After: OpenVSwitch Compute-0 CPU Utilization (Concurrency:50, Total:150)">
+</a></p>
+<h3 id="final-observations">Final observations</h3>
+<ul>
+<li><a href="https://www.ovn.org/support/dist-docs/ovn-controller.8.txt">ovn-controller</a> will now install more flows per second, putting more
+  pressure on <a href="http://www.openvswitch.org/support/dist-docs/ovs-vswitchd.8.html">Open vSwitch daemon</a> (running on the compute nodes) and
+  this is observed through its CPU utilization.</li>
+<li>Events are now processed in a distributed manner across the cloud. CPU
+  consumption is spread across the controllers, rather than being concentrated
+  on just one.</li>
+<li>At the time this work was done <a href="https://www.ovn.org/support/dist-docs/ovn-controller.8.txt">ovn-controller</a> was just a single-threaded
+  loop that calculates everything on each iteration every time some change
+  happens. As events are now processed in parallel by all the Neutron workers,
+  <a href="https://www.ovn.org/support/dist-docs/ovn-controller.8.txt">ovn-controller</a> (on the compute nodes) will process more changes per
+  iteration so its overall CPU consumption is also lowered.</li>
+<li>Control plane convergence in ML2/<abbr title="Open Virtual Network">OVN</abbr> is now significantly faster.</li>
+</ul>
+<h2 id="issues-encountered-during-this-work">Issues encountered during this work</h2>
+<ul>
+<li><a href="https://bugs.launchpad.net/networking-ovn/+bug/1833105">Hash Ring race condition during workers initialization</a></li>
+<li><a href="https://bugs.launchpad.net/networking-ovn/+bug/1831224"><abbr title="Open Virtual Network">OVN</abbr> metadata: Race condition (Metadata service is not ready for port)</a></li>
+<li><a href="https://bugs.launchpad.net/networking-ovn/+bug/1832003"><abbr title="Open Virtual Network">OVN</abbr> metadata: Leftovers namespaces in the environment</a></li>
+<li><a href="https://mail.openvswitch.org/pipermail/ovs-discuss/2019-June/048822.html">Core <abbr title="Open Virtual Network">OVN</abbr>: Incremental processing memory leak and performance issues</a></li>
+<li><a href="https://bugzilla.redhat.com/show_bug.cgi?id=1720166">ML2/OVS: DVR FIP traffic not working</a></li>
+</ul>
+<h2 id="references">References</h2>
+<ul>
+<li><a href="https://docs.openstack.org/neutron/latest/contributor/internals/ovn/distributed_ovsdb_events.html">The upstream spec file for this work</a><ul>
+<li>Here you can find more details about the implementation that is not
+  part of this blog post. Things such as heartbeating, clean up, etc...</li>
+</ul>
+</li>
+<li>The two main patches containng the implementation in networking-ovn (this work was prior to ML2/<abbr title="Open Virtual Network">OVN</abbr> migrate to the main Neutron repository):<ul>
+<li><a href="https://review.opendev.org/c/openstack/networking-ovn/+/655407">https://review.opendev.org/c/openstack/networking-ovn/+/655407</a></li>
+<li><a href="https://review.opendev.org/c/openstack/networking-ovn/+/655408">https://review.opendev.org/c/openstack/networking-ovn/+/655408</a></li>
+</ul>
+</li>
+</ul>
+		<div>
+	    
+            <div class="footer">
+               
+                   <p>(c) 2016 - 2024, Lucas Alvares Gomes<br>The content of this site is licensed under the <a href='https://creativecommons.org/licenses/by-sa/4.0/'>CC BY-SA 4.0</a>, and the <a href='https://github.com/umago/personal-site'>code</a> is <a href='https://raw.githubusercontent.com/umago/personal-site/gh-pages/LICENSE'>MIT</a>.</p>
+               
+            </div>
+        </div>
+    </body>
+
+</html>
