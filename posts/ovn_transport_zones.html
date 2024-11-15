@@ -66,7 +66,6 @@ OR
 
 $ sudo ovs-vsctl set open . external-ids:ovn-transport-zones=tz1,tz2,tz3
 </code></pre>
-
 <p>Once the configuration is set, the <em>ovn-controller</em> will detect those
 changes and will update the <strong>transport_zones</strong> column of the <abbr title="In OVN terminology, every node where the ovn-controller service is running is referred to as a Chassis.">Chassis</abbr>
 table in the <a href="http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html">OVN Southbound Database</a> with the new data:</p>
@@ -82,7 +81,6 @@ vtep_logical_switches: []
 
 ...
 </code></pre>
-
 <p>And last, by updating the <abbr title="In OVN terminology, every node where the ovn-controller service is running is referred to as a Chassis.">Chassis</abbr> table, an OVSDB event will generated
 which all ovn-contollers will then handle and recalculate its tunnels
 based on the new Transport Zones information. <abbr title="In OVN terminology, every node where the ovn-controller service is running is referred to as a Chassis.">Chassis</abbr> with at least one
@@ -126,7 +124,6 @@ type                : geneve
 
 ...
 </code></pre>
-
 <p>As you can see, everything is dynamic and no restart of services are
 required.</p>
 <h3 id="a-small-experiment">A small experiment</h3>
@@ -155,7 +152,6 @@ sudo ovn-nbctl lsp-add network1 vm2
 sudo ovn-nbctl lsp-set-addresses vm1 &quot;40:44:00:00:00:01 192.168.0.11&quot;
 sudo ovn-nbctl lsp-set-addresses vm2 &quot;40:44:00:00:00:02 192.168.0.12&quot;
 </code></pre>
-
 <p>Now, let's log into <em>Worker1</em> node and bind "vm1" to it:</p>
 <pre><code>sudo ovs-vsctl add-port br-int vm1 -- set Interface vm1 type=internal -- set Interface vm1 external_ids:iface-id=vm1
 sudo ip netns add vm1
@@ -164,7 +160,6 @@ sudo ip netns exec vm1 ip link set vm1 address 40:44:00:00:00:01
 sudo ip netns exec vm1 ip addr add 192.168.0.11/24 dev vm1
 sudo ip netns exec vm1 ip link set vm1 up
 </code></pre>
-
 <p>And "vm2" to the <em>Worker2</em> node:</p>
 <pre><code>sudo ovs-vsctl add-port br-int vm2 -- set Interface vm2 type=internal -- set Interface vm2 external_ids:iface-id=vm2
 sudo ip netns add vm2
@@ -173,7 +168,6 @@ sudo ip netns exec vm2 ip link set vm2 address 40:44:00:00:00:02
 sudo ip netns exec vm2 ip addr add 192.168.0.12/24 dev vm2
 sudo ip netns exec vm2 ip link set vm2 up
 </code></pre>
-
 <p>Let's ping "vm2" (running on <em>Worker2</em>) from "vm1" (running on <em>Worker1</em>):</p>
 <pre><code>$ sudo ip netns exec vm1 ping 192.168.0.12 -c 3
 PING 192.168.0.12 (192.168.0.12) 56(84) bytes of data.
@@ -185,7 +179,6 @@ PING 192.168.0.12 (192.168.0.12) 56(84) bytes of data.
 3 packets transmitted, 3 received, 0% packet loss, time 2004ms
 rtt min/avg/max/mdev = 0.595/1.053/1.355/0.329 ms
 </code></pre>
-
 <p>Great, it works! Let's now configure the Transport Zones following the
 rules below:</p>
 <ul>
@@ -204,31 +197,25 @@ to name as "tz1" and "tz2". The <em>Central</em> node will be part of both <abbr
 <p>From the <em>Central</em> node, do:</p>
 <pre><code>$ sudo ovs-vsctl set open . external-ids:ovn-transport-zones=tz1,tz2
 </code></pre>
-
 <p>From the <em>Worker1</em> node, do:</p>
 <pre><code>$ sudo ovs-vsctl set open . external-ids:ovn-transport-zones=tz1
 </code></pre>
-
 <p>And, from the <em>Worker2</em> node, do:</p>
 <pre><code>$ sudo ovs-vsctl set open . external-ids:ovn-transport-zones=tz2
 </code></pre>
-
 <p>Let's check the tunnels on each node. In the <em>Central</em> node we have:</p>
 <pre><code>$ sudo ovs-vsctl find interface type=&quot;geneve&quot; | grep name
 name                : &quot;ovn-worker-0&quot;
 name                : &quot;ovn-worker-1&quot;
 </code></pre>
-
 <p><em>Worker1</em>:</p>
 <pre><code>$ sudo ovs-vsctl find interface type=&quot;geneve&quot; | grep name
 name                : &quot;ovn-centra-0&quot;
 </code></pre>
-
 <p><em>Worker2</em>:</p>
 <pre><code>$ sudo ovs-vsctl find interface type=&quot;geneve&quot; | grep name
 name                : &quot;ovn-centra-0&quot;
 </code></pre>
-
 <p>As you can see, the nodes <em>Worker1</em> and <em>Worker2</em> does not have a tunnel
 formed between them. That means that pinging "vm2" (running on <em>Worker2</em>)
 from "vm1" (running on <em>Worker1</em>) should be blocked:</p>
@@ -238,7 +225,6 @@ PING 192.168.0.12 (192.168.0.12) 56(84) bytes of data.
 --- 192.168.0.12 ping statistics ---
 3 packets transmitted, 0 received, 100% packet loss, time 1999ms
 </code></pre>
-
 <h2 id="openstack-integration">OpenStack integration</h2>
 <p>Our next step now is to integrate the Transport Zones feature with
 the OpenStack <a href="https://docs.openstack.org/networking-ovn/latest/">networking-ovn</a> ML2 driver to provide for <a href="http://www.openvswitch.org/support/dist-docs/ovn-architecture.7.html">OVN</a>.</p>
@@ -264,7 +250,7 @@ limited to:</p>
 	    
             <div class="footer">
                
-                   <p>(c) 2016 - 2020, Lucas Alvares Gomes<br>The content of this site is licensed under the <a href='https://creativecommons.org/licenses/by-sa/4.0/'>CC BY-SA 4.0</a>, and the <a href='https://github.com/umago/personal-site'>code</a> is <a href='https://raw.githubusercontent.com/umago/personal-site/gh-pages/LICENSE'>MIT</a>.</p>
+                   <p>(c) 2016 - 2024, Lucas Alvares Gomes<br>The content of this site is licensed under the <a href='https://creativecommons.org/licenses/by-sa/4.0/'>CC BY-SA 4.0</a>, and the <a href='https://github.com/umago/personal-site'>code</a> is <a href='https://raw.githubusercontent.com/umago/personal-site/gh-pages/LICENSE'>MIT</a>.</p>
                
             </div>
         </div>

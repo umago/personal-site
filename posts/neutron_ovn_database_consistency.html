@@ -67,7 +67,6 @@ in both databases becoming inconsistent with each other.</p>
         port = neutron_db.get_port()
         update_port_in_southbound_controller(port)
 </code></pre>
-
 <p>This problem has been reported at <a href="https://bugs.launchpad.net/networking-ovn/+bug/1605089">bug #1605089</a>.</p>
 <h3 id="problem-2-backend-failures">Problem 2: Backend failures</h3>
 <p>The second situation is when changes are already fully persisted in
@@ -110,7 +109,6 @@ standardattributes WHERE id=1427;&quot;
 |               3 |
 +-----------------+
 </code></pre>
-
 <p>The revision_number attribute is used by networking-ovn to solve the
 inconsistency problem in four situations:</p>
 <h3 id="1-storing-the-revision_number-in-the-ovn-database">1. Storing the revision_number in the <abbr title="Open Virtual Network">OVN</abbr> database</h3>
@@ -139,7 +137,6 @@ external_ids        : {&quot;neutron:cidrs&quot;=&quot;&quot;,
 ...
 
 </code></pre>
-
 <h3 id="2-performing-a-compare-and-swap-operation-based-on-the-revision_number">2. Performing a <a href="https://en.wikipedia.org/wiki/Compare-and-swap">compare-and-swap</a> operation based on the revision_number</h3>
 <p>To ensure correctness when updating the <abbr title="Open Virtual Network">OVN</abbr> database, specifically when
 multiple updates are racing to change the same resource, we need to
@@ -185,7 +182,6 @@ TRANSACTION 2: NW-1 the OVSDB command now sees that the OVN resource
 is at revision_number 3, which is higher than the update version
 (revision_number 2) and aborts the transaction.
 </code></pre>
-
 <h3 id="3-detecting-inconsistent-resources">3. Detecting inconsistent resources</h3>
 <p>When things are working as expected the two items above should ensure
 that the Neutron and <abbr title="Open Virtual Network">OVN</abbr> databases are in a consistent state but, what
@@ -277,7 +273,6 @@ def create_port_postcommit(port):
     create_port_in_ovn(port)
     bump_revision(port['id'], revision_number=port['revision_number'])
 </code></pre>
-
 <h4 id="update-operation">Update operation</h4>
 <p>Every time an update to a resource is successfully committed in
 the <abbr title="Open Virtual Network">OVN</abbr> database, the revision_number for that resource in the
@@ -291,7 +286,6 @@ and inconsistencies will be detect in the same way as they are in the
     update_port_in_ovn(port)
     bump_revision(port['id'], revision_number=port['revision_number'])
 </code></pre>
-
 <h4 id="delete-operation">Delete operation</h4>
 <p>The standard_attr_id column in the ovn_revision_numbers table is a
 foreign key constraint with a ONDELETE=SET NULL set. Which means that,
@@ -307,7 +301,6 @@ ovn_revision_numbers table can then be delete as well.</p>
     delete_port_in_ovn(port)
     delete_revision(port['id'])
 </code></pre>
-
 <h3 id="4-fixing-inconsistent-resources">4. Fixing inconsistent resources</h3>
 <p>Now that the algorithm to detected inconsistencies has been optimized
 we were able to create a <a href="https://github.com/openstack/networking-ovn/blob/master/networking_ovn/common/maintenance.py#L85">maintenance task</a> that runs periodically
@@ -379,7 +372,7 @@ for Neutron.&#160;<a class="footnote-backref" href="#fnref:2" title="Jump back t
 	    
             <div class="footer">
                
-                   <p>(c) 2016 - 2020, Lucas Alvares Gomes<br>The content of this site is licensed under the <a href='https://creativecommons.org/licenses/by-sa/4.0/'>CC BY-SA 4.0</a>, and the <a href='https://github.com/umago/personal-site'>code</a> is <a href='https://raw.githubusercontent.com/umago/personal-site/gh-pages/LICENSE'>MIT</a>.</p>
+                   <p>(c) 2016 - 2024, Lucas Alvares Gomes<br>The content of this site is licensed under the <a href='https://creativecommons.org/licenses/by-sa/4.0/'>CC BY-SA 4.0</a>, and the <a href='https://github.com/umago/personal-site'>code</a> is <a href='https://raw.githubusercontent.com/umago/personal-site/gh-pages/LICENSE'>MIT</a>.</p>
                
             </div>
         </div>
