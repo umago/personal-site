@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+        <link rel="stylesheet" type="text/css" href="/style.css">
+        
+            <title>Lucas A. Gomes' Personal Page</title>
+        
+    </head>
+
+    <body>
+	<div class="wrapper">
+	    <div class="header">
+		<h1>~lucasgom.es</h1>
+		<ul>
+		    
+		        <li><a href="/index.html">home</a></li>
+		    
+		        <li><a href="/about.html">about</a></li>
+		    
+		        <li><a href="http://github.com/umago">github</a></li>
+		    
+		</ul>
+	    </div>
+	    
+
+	    
+                
+                    <h1 class="post_title">RHEL AI on OpenStack</h1>
+                    <p class="post_date">11 February, 2025</p>
+	        
+		<div class="content">
+		    <p>In this post, I’ll show you how to deploy <a href="https://developers.redhat.com/products/rhel-ai/overview">RHEL AI</a> on <a href="https://www.openstack.org/">OpenStack</a> on a
+standalone machine with a GPU.</p>
+<p>As of this writing, RHEL AI version 1.3
+<a href="https://docs.redhat.com/en/documentation/red_hat_enterprise_linux_ai/1.3/html/getting_started/hardware_requirements_rhelai#hardware_req_training">does not yet officially support running on OpenStack</a>, so consider
+this an experimental setup.</p>
+<h2 id="what-is-rhel-ai">What is RHEL AI ?</h2>
+<p>If you're new to it, <a href="https://developers.redhat.com/products/rhel-ai/overview">RHEL AI</a> is an open-source platform designed for
+developing, testing, and running AI models. It includes pre-configured
+tools and hardware acceleration support, making it easy for someone to
+get started with AI, experiment, and integrate it into various operations.</p>
+<h2 id="rhoso-red-hat-openstack-services-on-openshift">RHOSO (Red Hat OpenStack Services on OpenShift)</h2>
+<p>With <a href="https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/planning_your_deployment/assembly_red-hat-openstack-services-on-openshift-overview">RHOSO</a>, we are able to run <a href="https://www.openstack.org/">OpenStack</a> on top of
+OpenShift. The control plane is hosted and managed as a workload on
+OpenShift meaning that <a href="https://www.openstack.org/">OpenStack</a> services such as Nova, Keystone,
+Neutron, etc... will be installed as operators and deployed as pods.</p>
+<p>The <a href="https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/planning_your_deployment/assembly_red-hat-openstack-services-on-openshift-overview">RHOSO</a> data plane is made up of external nodes that runs the
+<a href="https://www.openstack.org/">OpenStack</a> workloads, we refer to those as <abbr title="External Data Plane Management">EDPM</abbr> (External Data Plane
+Management) nodes.</p>
+<h2 id="my-setup">My setup</h2>
+<p>For my experiment, I’ll be running RHEL 9.4 on a machine with these
+specifications:</p>
+<ul>
+<li>GPU: NVIDIA Corporation AD104GL [L4]</li>
+<li>CPU: Intel(R) Xeon(R) Gold 6348 CPU @ 2.60GHz</li>
+<li>Memory: 250 GiB</li>
+<li>Disk: 1 TiB</li>
+</ul>
+<h2 id="our-experiment">Our experiment</h2>
+<p>In order to test <a href="https://developers.redhat.com/products/rhel-ai/overview">RHEL AI</a> on <a href="https://www.openstack.org/">OpenStack</a> on a single machine,
+we will deploy the OpenStack control plane inside a <abbr title="Virtual Machine">VM</abbr> using <a href="https://crc.dev/docs/introducing/">CRC</a>
+and the <abbr title="External Data Plane Management">EDPM</abbr> node will also run as a <abbr title="Virtual Machine">VM</abbr> utilizing PCI passthrough to
+pass the NVIDIA GPU to the Nova compute service. Finally, <a href="https://developers.redhat.com/products/rhel-ai/overview">RHEL AI</a>
+will run as an <a href="https://www.openstack.org/">OpenStack</a> instance on the <abbr title="External Data Plane Management">EDPM</abbr> node.</p>
+<p>This setup will face significant performance issues due to double nested
+virtualization. It's clearly not intended for real-world use, just as
+an experiment to see if everything works as expected.</p>
+<h2 id="setting-up-the-host">Setting up the host</h2>
+<p>To setup the host we need to enable virtualization and <abbr title="Input-Output Memory Management Unit">IOMMU</abbr> (Input-Output
+Memory Management Unit), blacklist the graphics card in the host machine
+and reserve the GPU via <abbr title="Virtual Function I/O">VFIO</abbr> (Virtual Function I/O) so the <abbr title="Virtual Machine">VM</abbr> can use it.</p>
+<p>Each of these steps are described below:</p>
+<h3 id="enable-virtualization">Enable virtualization</h3>
+<p>To use PCI passthrough, first we need to ensure that virtualization is
+enabled in the BIOS. Enabling virtualization differs by vendor, so be
+sure to check their documentation. For Intel, this feature is called VT-d,
+while for AMD, it's referred to as AMD-V.</p>
+<h3 id="blacklist-the-drivers">Blacklist the drivers</h3>
+<p>To ensure the graphics drivers are not loaded in the host we need to
+blacklist them. Depending on vendor of the card it will be a different
+driver name, for example:</p>
+<ul>
+<li>For NVIDIA GPUs:</li>
+</ul>
+<pre><code class="language-bash">echo -e &quot;blacklist nouveau\nblacklist nvidia*&quot; | tee -a /etc/modprobe.d/blacklist.conf
+</code></pre>
+<ul>
+<li>For AMD GPUs:</li>
+</ul>
+<pre><code class="language-bash">echo -e &quot;blacklist amdgpu\nblacklist radeon&quot; | tee -a /etc/modprobe.d/blacklist.conf
+</code></pre>
+<h3 id="enable-iommu">Enable <abbr title="Input-Output Memory Management Unit">IOMMU</abbr></h3>
+<p><abbr title="Input-Output Memory Management Unit">IOMMU</abbr> is a feature that controls how devices access memory, improving
+performance and security in virtual environments.</p>
+<p>In order to enable <abbr title="Input-Output Memory Management Unit">IOMMU</abbr> we need to change the kernel command line.
+If you are using intel like me, you can run the following command to
+update the kernel command line in the bootloader (assuming <abbr title="GRand Unified Bootloader">GRUB</abbr> bootloader
+is being used):</p>
+<pre><code class="language-bash">grubby --update-kernel ALL --args 'intel_iommu=on iommu=pt'
+</code></pre>
+<p>For AMD, it should be enabled by default so you can skip this step.</p>
+<h3 id="reserve-the-gpu">Reserve the GPU</h3>
+<p>To reserve the GPU and give the <abbr title="Virtual Machine">VM</abbr> directly access to the PCI device we will
+use a feature in the Linux kernel called <abbr title="Virtual Function I/O">VFIO</abbr>.</p>
+<p>Just like <abbr title="Input-Output Memory Management Unit">IOMMU</abbr>, <abbr title="Virtual Function I/O">VFIO</abbr> is configured via the kernel command line. But first,
+we need to find the <strong>product ID</strong> and <strong>vendor ID</strong> o a system with the
+GPU device installed:</p>
+<pre><code class="language-bash"># lspci -nn | grep NVIDIA
+4b:00.0 3D controller [0302]: NVIDIA Corporation AD104GL [L4] [10de:27b8] (rev a1)
+</code></pre>
+<p>In the example above, the vendor ID is <strong>10de</strong> and the product ID
+is <strong>27b8</strong>.  Now, let's update the kernel command line in the bootloader:</p>
+<pre><code class="language-bash">PCI=&quot;10de:27b8&quot;
+sudo grubby --update-kernel ALL --args &quot;rd.driver.pre=vfio_pci vfio_pci.ids=${PCI} modules-load=vfio,vfio-pci,vfio_iommu_type1,vfio_pci_vfio_virqfd&quot;
+</code></pre>
+<p>Once that's done, reboot the machine.</p>
+<h2 id="deploying-rhoso">Deploying RHOSO</h2>
+<p>To deploy RHOSO, we'll use some helper scripts developed by my team at Red Hat.</p>
+<p>The deployment has two phases:
+1. Deploying the control plane
+2. Deploying the <abbr title="External Data Plane Management">EDPM</abbr> node</p>
+<p>But first, let's download the scripts, install the dependencies and validate
+our host machine:</p>
+<pre><code class="language-bash">git clone https://github.com/openstack-k8s-operators/rhoso-rhelai/
+cd ./rhoso-rhelai/nested-passthrough/
+</code></pre>
+<p>Note, the latest commit ID at the time of writing is: 582b22229c313fe5fc55e8ae820e872a464681d0</p>
+<p>To install the required dependencies and tools run:</p>
+<pre><code class="language-bash">make download_tools
+</code></pre>
+<p>Now, let's verify our host machine to ensure the previous steps were
+applied correctly:</p>
+<pre><code class="language-bash">make validate_host
+</code></pre>
+<p>If everything is set up correctly, you should see an output like this:</p>
+<pre><code class="language-bash">$ make validate_host
+✔ IOMMU correctly configured
+✔ NVIDIA GPU found
+✔ GPU held by vfio-pci: 4b:00.0
+</code></pre>
+<h3 id="deploying-the-control-plane">Deploying the control plane</h3>
+<p>To deploy the control plane, first we need a pull-secret from the
+<a href="https://cloud.redhat.com/openshift/create/local">OpenShift website</a>. This file should be located at <strong>~/pull-secret</strong>.</p>
+<p>Once the <strong>~/pull-secret</strong> file is created, run the following command:</p>
+<pre><code class="language-bash">make deploy_controlplane
+</code></pre>
+<p>After the command completes, you now should have a single-node OpenShift
+cluster with the <a href="https://www.openstack.org/">OpenStack</a> services running on it. For example:</p>
+<pre><code class="language-bash">$ eval $(crc oc-env)
+$ oc get pods | grep nova-api
+nova-api-0                             2/2     Running     0          3m23s
+nova-api-c3c5-account-create-9vw8t     0/1     Completed   0          5m7s
+nova-api-db-create-662w9               0/1     Completed   0          5m17s
+</code></pre>
+<h3 id="deploying-the-edpm-node">Deploying the <abbr title="External Data Plane Management">EDPM</abbr> node</h3>
+<p>We now need to deploy the <abbr title="External Data Plane Management">EDPM</abbr> node, this is will be a <abbr title="Virtual Machine">VM</abbr> where the
+<a href="https://developers.redhat.com/products/rhel-ai/overview">RHEL AI</a> instance will run on.</p>
+<pre><code class="language-bash">make deploy_edpm
+</code></pre>
+<p>Note, you can adjust the size of the disk, memory and number of CPUs of the
+<abbr title="External Data Plane Management">EDPM</abbr> node using the <strong>EDPM_DISK</strong>, <strong>EDPM_RAM</strong> and <strong>EDPM_CPUS</strong> environment
+variables.</p>
+<p>Once deployed, the IP of the <abbr title="External Data Plane Management">EDPM</abbr> node will be <strong>192.168.122.100</strong>,
+let's SSH into the node and verify that our GPU is being passed to it:</p>
+<pre><code class="language-bash">$ ssh -i ~/rhoso-rhelai/nested-passthrough/out/ansibleee-ssh-key-id_rsa root@192.168.122.100
+[root@edpm-compute-0 ~]# lspci -d &quot;10de:&quot;
+06:00.0 3D controller: NVIDIA Corporation AD104GL [L4] (rev a1)
+</code></pre>
+<h2 id="deploying-rhel-ai">Deploying RHEL AI</h2>
+<p>In order to deploy the <a href="https://developers.redhat.com/products/rhel-ai/overview">RHEL AI</a> instance, first create a download
+link in the <a href="https://access.redhat.com/downloads/content/932">RHEL AI download page</a>. Then, copy the link for the
+qcow2 format corresponding to your GPU vendor and assign it to the
+<strong>AI_IMAGE_URL</strong> environment variable or, you can download the image
+locally and save it as <strong>out/rhel-ai-disk.qcow2</strong>.</p>
+<p>Note, you may need to join the <a href="https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux/ai/trial">RHEL AI trial</a> first.</p>
+<pre><code class="language-bash">AI_DISK=300 AI_IMAGE_URL=&quot;https://access.cdn.redhat.com/...&quot; make deploy_rhel_ai
+</code></pre>
+<p>Note, I adjusted the disk size via the <strong>AI_DISK</strong> environment variable to
+fit my deployment. However, if you plan to experiment with multiple models,
+I recommend using at least 800 GiB.</p>
+<p>After running make deploy_rhel_ai, you should see a message similar to the
+one below:</p>
+<blockquote>
+<p>Access <abbr title="Virtual Machine">VM</abbr> with: oc rsh openstackclient ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ./rhel-ai.pem cloud-user@192.168.122.222</p>
+</blockquote>
+<p>We can now access the <a href="https://developers.redhat.com/products/rhel-ai/overview">RHEL AI</a> instance to check if the system detects
+the GPU and if the vendor driver recognizes the device:</p>
+<pre><code class="language-bash">$ oc rsh openstackclient ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ./rhel-ai.pem cloud-user@192.168.122.222
+[cloud-user@rhel-ai ~]$ lspci -d &quot;10de:&quot;
+05:00.0 3D controller: NVIDIA Corporation AD104GL [L4] (rev a1)
+[cloud-user@rhel-ai ~]$ nvidia-smi -L
+GPU 0: NVIDIA L4 (UUID: GPU-de84ad31-ebe4-fc2d-5518-4b13a4c16e1c)
+</code></pre>
+<h2 id="whats-next">What’s Next?</h2>
+<p>In this blog post we covered the essential steps to get <a href="https://developers.redhat.com/products/rhel-ai/overview">RHEL AI</a>
+deployed on <a href="https://www.openstack.org/">OpenStack</a> but, it does not stop there. If you want to
+continue exploring <a href="https://developers.redhat.com/products/rhel-ai/overview">RHEL AI</a> and <a href="https://instructlab.ai/">InstructLab</a>, take a look at the
+<a href="https://docs.redhat.com/en/documentation/red_hat_enterprise_linux_ai/1.3/html/building_your_rhel_ai_environment/index">official documentation</a>. There, you will find instructions on setting
+up <a href="https://instructlab.ai/">InstructLab</a>, as well as downloading, chatting with, and serving
+various AI models.</p>
+<p>Thanks for reading! Happy experimenting with <a href="https://developers.redhat.com/products/rhel-ai/overview">RHEL AI</a> on <a href="https://www.openstack.org/">OpenStack</a>!</p>
+<p><a href=/posts/images/rhelai_openstack.png target="_blank">
+<img src=/posts/images/rhelai_openstack.png width=70% class="center" title="RHEL AI on OpenStack">
+</a></p>
+		<div>
+	    
+            <div class="footer">
+               
+                   <p>(c) 2016 - 2025, Lucas Alvares Gomes<br>The content of this site is licensed under the <a href='https://creativecommons.org/licenses/by-sa/4.0/'>CC BY-SA 4.0</a>, and the <a href='https://github.com/umago/personal-site'>code</a> is <a href='https://raw.githubusercontent.com/umago/personal-site/gh-pages/LICENSE'>MIT</a>.</p>
+               
+            </div>
+        </div>
+    </body>
+
+</html>
