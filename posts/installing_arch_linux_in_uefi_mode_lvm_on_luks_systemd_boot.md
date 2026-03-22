@@ -14,7 +14,7 @@ goes through the full process of installing Arch Linux in UEFI mode,
 full disk encryption (LVM on LUKS) and systemd-boot as the bootloader.
 
 <div class="video">
-    <iframe src="http://www.youtube.com/embed/a1AXHpog9iI" frameborder="0" allowfullscreen></iframe>
+    <iframe src="https://www.youtube.com/embed/a1AXHpog9iI" frameborder="0" allowfullscreen></iframe>
 </div>
 
 Note that these instructions are just a high level overview of the process
