@@ -1,5 +1,6 @@
 title: Neutron & OVN database consistency
 date: 03-05-2018
+headline: Ensuring consistency between Neutron and OVN databases using revision numbers to prevent race conditions and detect/fix out-of-sync resources.
 
 In this post I will talk about a problem that affects many (if not all)
 drivers in [OpenStack Neutron][0] and how it was solved for the OVN driver

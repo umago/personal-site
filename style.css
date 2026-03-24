@@ -8,7 +8,7 @@ body {
     margin: 0;
     min-height: 100%;
     color: #b2afac;
-    background-color: #42413d;
+    background-color: #21201e;
     font-family: "courier", monospace;
 }
 
@@ -94,6 +94,7 @@ th {
 
 .posts li {
     padding-top: 10px;
+    font-size: 20px;
 }
 
 .posts ul {
@@ -137,6 +138,14 @@ th {
     font-style: italic;
     margin-top: 0px;
     margin-bottom: 25px;
+}
+
+.post_headline {
+    font-size: 15px;
+    color: #868480;
+    margin-top: 3px;
+    margin-bottom: 15px;
+    margin-left: 15px;
 }
 
 @media screen and (max-width: 600px) {

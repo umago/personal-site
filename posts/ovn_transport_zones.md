@@ -1,5 +1,6 @@
 title: OVN: Transport Zones
 date: 14-05-2019
+headline: Controlling OVN tunnel formation with Transport Zones to isolate network traffic between nodes.
 
 In this post, I present a new feature that recently landed in [OVN][0]
 called Transport Zones (AKA TZs).

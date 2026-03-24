@@ -1,5 +1,6 @@
 title: Installing Arch Linux in UEFI mode + LVM on LUKS + systemd-boot
 date: 10-09-2016
+headline: Installing Arch Linux with UEFI, full disk encryption (LUKS + LVM), and systemd-boot guide.
 
 I've been a Fedora user for a couple of years now (~5 years, before
 joining Red Hat) and all my machines run on it. But, I just recently

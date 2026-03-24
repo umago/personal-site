@@ -72,6 +72,7 @@ def build_html(template, template_args):
             meta = _sanitize_metadata(md.Meta)
             extra_args['__post_title__'] = meta['title']
             extra_args['__post_date__'] = meta['date']
+            extra_args['__post_headline__'] = meta['headline']
             meta['__href__'] = os.path.join(
                 'posts', os.path.basename(dst_file))
             posts.append(meta)

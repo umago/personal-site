@@ -1,5 +1,6 @@
 title: Neutron Distributed OVSDB events handler (Hash Ring)
 date: 15-11-2024
+headline: Distributing Neutron workloads across workers using a Consistent Hash Ring for scalable task processing.
 
 In this post I will talk about a bottleneck problem handling OVSDB events that
 we had in the ML2/OVN driver for [OpenStack Neutron][0] and how we solved it.
