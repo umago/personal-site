@@ -6,7 +6,7 @@ Workloads team, a R&D group focused on accelerating AI innovation within
 OpenStack.
 
 Previously I worked on [OVN (Open Virtual
-Network)](http://www.openvswitch.org//support/dist-docs/ovn-architecture.7.html),
+Network)](https://www.ovn.org),
 [OpenStack Networking
 (Neutron)](https://docs.openstack.org/neutron/latest/)
 as a core developer and OpenStack [OpenStack Bare Metal

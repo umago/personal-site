@@ -5,6 +5,7 @@
   "links": [
       ["home", "/index.html"],
       ["about", "/about.html"],
-      ["github", "http://github.com/umago"]
+      ["github", "https://github.com/umago"],
+      ["linkedin", "https://www.linkedin.com/in/lucasagomes/"]
   ]
 }
