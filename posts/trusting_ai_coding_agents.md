@@ -1,6 +1,7 @@
 title: Trusting AI Coding Agents (With a Sandbox)
 date: 26-03-2026
 headline: A lightweight approach to using AI coding agents while keeping my system secure.
+tags: ai, linux
 
 I've been using [Goose][0] as my AI coding agent since it supports
 multiple LLM providers. That's been useful because my company offers

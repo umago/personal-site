@@ -1,6 +1,7 @@
 title: RHEL AI on OpenStack
 date: 11-02-2025
 headline: A short guide explaining how to set up and run RHEL AI on OpenStack using a single GPU machine for testing purposes.
+tags: openstack, ai
 
 In this post, I’ll show you how to deploy [RHEL AI][0] on [OpenStack][3] on a
 standalone machine with a GPU.

@@ -173,6 +173,35 @@ th {
     cursor: default;
 }
 
+.post_tags {
+    font-size: 0.8125rem;
+    margin-top: 0.1875rem;
+    margin-bottom: 0.9375rem;
+    margin-left: 0.9375rem;
+}
+
+.tag {
+    color: #868480;
+    margin-right: 0.25rem;
+    font-size: 0.875rem;
+}
+
+.tag:hover {
+    color: #ee7500;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.tag-heading {
+    font-size: 1rem;
+    color: #868480;
+    margin-bottom: 1.5rem;
+}
+
+.tag-heading .tag {
+    font-size: 1rem;
+}
+
 @media screen and (max-width: 600px) {
     .header {
         display: block;

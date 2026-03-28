@@ -1,6 +1,7 @@
 title: Neutron & OVN database consistency
 date: 03-05-2018
 headline: Ensuring consistency between Neutron and OVN databases to prevent race conditions and fix out-of-sync resources.
+tags: openstack, networking, ovn
 
 In this post I will talk about a problem that affects many (if not all)
 drivers in [OpenStack Neutron][0] and how it was solved for the OVN driver

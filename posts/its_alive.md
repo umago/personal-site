@@ -1,6 +1,7 @@
 title: It's Alive!
 date: 04-09-2016
 headline: Initial post.
+tags:
 
 As time permits I will compose a post for this site to share random
 thoughts about technology, places, incidents, activities and other things

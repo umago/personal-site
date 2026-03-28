@@ -49,11 +49,14 @@ def _sanitize_metadata(meta):
         if key == 'date':
             value = datetime.datetime.strptime(value, "%d-%m-%Y")
 
+        if key == 'tags':
+            value = [t.strip() for t in value.split(',') if t.strip()]
+
         meta[key] = value
     return meta
 
 
-def build_html(template, template_args):
+def build_html(template, tag_template, template_args):
     md_list = get_markdown_files()
     posts = []
     for src in md_list:
@@ -76,6 +79,7 @@ def build_html(template, template_args):
             extra_args['__post_title__'] = meta['title']
             extra_args['__post_date__'] = meta['date']
             extra_args['__post_headline__'] = meta['headline']
+            extra_args['__post_tags__'] = meta.get('tags', [])
             meta['__href__'] = '/' + os.path.join(
                 'posts', os.path.basename(dst_file))
             posts.append(meta)
@@ -84,6 +88,8 @@ def build_html(template, template_args):
             f.write(template.render(**template_args, **extra_args, __content__=html,))
 
     posts = sorted(posts, key=lambda k: k['date'], reverse=True)
+
+    # Build index pages (paginated)
     total_pages = max(1, math.ceil(len(posts) / POSTS_PER_PAGE))
 
     for page_num in range(1, total_pages + 1):
@@ -109,6 +115,19 @@ def build_html(template, template_args):
         with open(out_path, 'w') as f:
             f.write(template.render(**template_args, **pagination, __posts__=page_posts))
 
+    # Build tag pages
+    tags = {}
+    for post in posts:
+        for tag in post.get('tags', []):
+            tags.setdefault(tag, []).append(post)
+
+    for tag, tag_posts in tags.items():
+        tag_dir = os.path.join('tags', tag)
+        os.makedirs(tag_dir, exist_ok=True)
+        out_path = os.path.join(tag_dir, 'index.html')
+        with open(out_path, 'w') as f:
+            f.write(tag_template.render(**template_args, __tag__=tag, __posts__=tag_posts))
+
 
 def main():
     with open('config.json', 'r') as f:
@@ -116,13 +135,14 @@ def main():
 
     env = jinja2.Environment(loader=jinja2.FileSystemLoader('.'))
     template = env.get_template('index.html.template')
+    tag_template = env.get_template('tag.html.template')
     template_args = {
         '__links__': conf.get('links', []),
         'title': conf.get('title'),
         'header': conf.get('header'),
         'footer': conf.get('footer'),
     }
-    build_html(template, template_args)
+    build_html(template, tag_template, template_args)
 
 
 if __name__ == "__main__":

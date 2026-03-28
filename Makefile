@@ -13,7 +13,7 @@ build:
 
 clean:
 	find . -name "*.html" -exec rm -rf {} \;
-	rm -rf venv
+	rm -rf venv/ page/ tags/
 
 run:
 	python3 -m http.server 4000
