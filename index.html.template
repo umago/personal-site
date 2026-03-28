@@ -30,6 +30,21 @@
                         {% endfor %}
                     </ul>
 		</div>
+                {% if __total_pages__ is defined and __total_pages__ > 1 %}
+                    <div class="pagination">
+                        {% if __has_prev__ %}
+                            <a href="{{ __prev_url__ }}">&larr; newer</a>
+                        {% else %}
+                            <span class="pagination-disabled">&larr; newer</span>
+                        {% endif %}
+                        <span class="pagination-info">page {{ __current_page__ }} of {{ __total_pages__ }}</span>
+                        {% if __has_next__ %}
+                            <a href="{{ __next_url__ }}">older &rarr;</a>
+                        {% else %}
+                            <span class="pagination-disabled">older &rarr;</span>
+                        {% endif %}
+                    </div>
+                {% endif %}
 	    {% endif %}
 
 	    {% if __content__ %}

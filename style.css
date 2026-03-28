@@ -153,6 +153,26 @@ th {
     margin-left: 0.9375rem;
 }
 
+.pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px dotted #ee7500;
+    font-size: 0.9375rem;
+}
+
+.pagination-info {
+    color: #868480;
+    font-style: italic;
+}
+
+.pagination-disabled {
+    color: #4a4946;
+    cursor: default;
+}
+
 @media screen and (max-width: 600px) {
     .header {
         display: block;

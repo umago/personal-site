@@ -23,11 +23,14 @@
 
 import datetime
 import json
+import math
 import os
 import sys
 
 import jinja2
 import markdown
+
+POSTS_PER_PAGE = 10
 
 
 def get_markdown_files():
@@ -73,7 +76,7 @@ def build_html(template, template_args):
             extra_args['__post_title__'] = meta['title']
             extra_args['__post_date__'] = meta['date']
             extra_args['__post_headline__'] = meta['headline']
-            meta['__href__'] = os.path.join(
+            meta['__href__'] = '/' + os.path.join(
                 'posts', os.path.basename(dst_file))
             posts.append(meta)
 
@@ -81,8 +84,30 @@ def build_html(template, template_args):
             f.write(template.render(**template_args, **extra_args, __content__=html,))
 
     posts = sorted(posts, key=lambda k: k['date'], reverse=True)
-    with open('index.html', 'w') as f:
-        f.write(template.render(**template_args, __posts__=posts))
+    total_pages = max(1, math.ceil(len(posts) / POSTS_PER_PAGE))
+
+    for page_num in range(1, total_pages + 1):
+        start = (page_num - 1) * POSTS_PER_PAGE
+        page_posts = posts[start:start + POSTS_PER_PAGE]
+
+        if page_num == 1:
+            out_path = 'index.html'
+        else:
+            page_dir = os.path.join('page', str(page_num))
+            os.makedirs(page_dir, exist_ok=True)
+            out_path = os.path.join(page_dir, 'index.html')
+
+        pagination = {
+            '__current_page__': page_num,
+            '__total_pages__': total_pages,
+            '__has_prev__': page_num > 1,
+            '__has_next__': page_num < total_pages,
+            '__prev_url__': '/index.html' if page_num == 2 else f'/page/{page_num - 1}/',
+            '__next_url__': f'/page/{page_num + 1}/',
+        }
+
+        with open(out_path, 'w') as f:
+            f.write(template.render(**template_args, **pagination, __posts__=page_posts))
 
 
 def main():
